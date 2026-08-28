@@ -1,0 +1,249 @@
+"""HostMonitor / MonitorRegistry。
+
+- HostMonitor：每台主机一个独立监控单元（采集 + 缓冲 + 事件 + 快照），一台故障不影响其他主机。
+- 1s tick：速度来源优先级（日志 tg_3s > /slots 差分）→ 写 llama 环形缓冲 → 生成快照（含 alerts）。
+- MonitorRegistry：管理所有 HostMonitor，提供门户摘要。
+- 兼容 Python 3.9。
+"""
+import asyncio
+import logging
+import time
+from typing import Any, Dict, List, Optional
+
+from .alerts import evaluate_alerts
+from .config import AppConfig, GlobalConfig, HostConfig
+from .events import EventDetector
+from .diff import DiffEngine
+from .llama_flags import parse_cmdline
+from .store import RingBuffer, downsample
+from .pollers.llama_api import LlamaPoller
+from .pollers.log_poller import LogPoller
+from .pollers.ssh_conn import SshConnection
+from .pollers.ssh_host import SshPoller
+
+log = logging.getLogger("llamalens.monitor")
+
+HOST_SERIES = ("cpu", "mem_used", "mem_buff_cache", "swap_used",
+               "net_rx", "net_tx", "proc_cpu")
+GPU_PREFIXES = ("gpu_util_", "gpu_mem_", "gpu_temp_", "gpu_power_")
+
+
+class HostMonitor:
+    def __init__(self, cfg: HostConfig, global_cfg: GlobalConfig):
+        self.cfg = cfg
+        self.global_cfg = global_cfg
+        self.events = EventDetector()
+        self.diff = DiffEngine()
+        self.ring_llama = RingBuffer(global_cfg.llama_points)
+        self.ring_host = RingBuffer(global_cfg.host_points)
+        self.ssh = SshConnection(cfg.ssh, self.events, cfg.id)
+        self.llama = LlamaPoller(cfg, self.events)
+        self.ssh_poller = SshPoller(cfg, self.ssh, self.diff, self.ring_host, self.events)
+        self.log_poller = LogPoller(cfg, self.ssh, self.events, self.ring_llama)
+        self._tasks: List[asyncio.Task] = []
+        self._snapshot: Optional[Dict[str, Any]] = None
+        self._stopped = False
+        self._last_cmdline: Optional[str] = None
+        self._flags: Dict[str, Any] = {}
+
+    # ------------------------------------------------------------------
+    async def start(self) -> None:
+        log.info("[%s] HostMonitor 启动", self.cfg.id)
+        self._tasks = [
+            asyncio.create_task(self.llama.start()),
+            asyncio.create_task(self.ssh_poller.start()),
+            asyncio.create_task(self.log_poller.start()),
+            asyncio.create_task(self._tick_loop()),
+        ]
+
+    async def stop(self) -> None:
+        self._stopped = True
+        self.llama.stop()
+        self.ssh_poller.stop()
+        self.log_poller.stop()
+        for t in self._tasks:
+            t.cancel()
+        await self.ssh.close()
+        await asyncio.gather(*self._tasks, return_exceptions=True)
+        self._tasks = []
+
+    # ------------------------------------------------------------------
+    async def _tick_loop(self) -> None:
+        interval = self.global_cfg.push_interval
+        while not self._stopped:
+            await asyncio.sleep(interval)
+            try:
+                now = time.time()
+                gen, prompt = self._speeds()
+                # 离线时写 None（未知）而非 0，历史曲线出现断点而不是假零线
+                online = bool(self.llama.state.get("online"))
+                self.ring_llama.push("gen_speed", now, gen if online else None)
+                self.ring_llama.push("prompt_speed", now, prompt if online else None)
+                self._snapshot = self._build_snapshot(gen, prompt)
+            except Exception:
+                log.exception("[%s] tick 失败", self.cfg.id)
+
+    def _speeds(self):
+        """速度来源优先级：日志 tg_3s / prompt 行 > /slots 差分。"""
+        llama = self.llama.state
+        gen = llama.get("gen_speed_tps") or 0.0
+        prompt = llama.get("prompt_speed_tps") or 0.0
+        logst = self.log_poller.state
+        st = logst.get("state") or {}
+        if logst.get("available"):
+            if st.get("phase") == "decoding" and st.get("tg_3s_tps") is not None:
+                gen = st["tg_3s_tps"]
+            if st.get("phase") == "prompt_processing" and st.get("prompt_speed_tps") is not None:
+                prompt = st["prompt_speed_tps"]
+        return gen, prompt
+
+    # ------------------------------------------------------------------
+    def snapshot(self) -> Dict[str, Any]:
+        if self._snapshot is None:
+            gen, prompt = self._speeds()
+            self._snapshot = self._build_snapshot(gen, prompt)
+        return self._snapshot
+
+    def _build_snapshot(self, gen: float, prompt: float) -> Dict[str, Any]:
+        now = time.time()
+        llama = self.llama.state
+        logst = self.log_poller.state
+        hm = self.ssh_poller.metrics
+        st = logst.get("state") or {}
+
+        source = "log" if (logst.get("available") and (
+            (st.get("phase") == "decoding" and st.get("tg_3s_tps") is not None) or
+            (st.get("phase") == "prompt_processing" and st.get("prompt_speed_tps") is not None)
+        )) else "api"
+
+        # 模型合并：/props + /v1/models + 命令行(mmproj) + ls -l(体积)
+        model = dict(llama.get("model") or {})
+        cmdline = (hm.get("process") or {}).get("cmdline", "")
+        if cmdline != self._last_cmdline:
+            self._last_cmdline = cmdline
+            self._flags = parse_cmdline(cmdline)
+        flags = self._flags
+        sizes = hm.get("_model_sizes") or {}
+        if model.get("path") and model.get("path") in sizes:
+            model["file_size"] = sizes[model["path"]]
+        mmproj = flags.get("mmproj")
+        if mmproj:
+            model["mmproj_path"] = mmproj
+            if mmproj in sizes:
+                model["mmproj_size"] = sizes[mmproj]
+
+        host_metrics = {k: v for k, v in hm.items() if k != "_model_sizes"}
+        if isinstance(host_metrics.get("process"), dict):
+            host_metrics["process"] = dict(host_metrics["process"])
+            host_metrics["process"]["flags"] = flags
+
+        # 上下文：API 实时值（slot）优先，日志（任务结束行）兜底。
+        # 注意 logst 是 LogPoller 的活引用，合并结果必须放副本，不能改原 state。
+        log_snap = dict(logst)
+        ctx = dict(logst.get("context") or {})
+        api_ctx = llama.get("ctx") or {}
+        if api_ctx.get("total"):
+            ctx["total"] = api_ctx["total"]
+        if api_ctx.get("used") is not None:
+            ctx["used"] = api_ctx["used"]
+        if ctx.get("used") is not None and ctx.get("total"):
+            ctx["pct"] = round(ctx["used"] / ctx["total"] * 100.0, 1)
+            ctx["remaining"] = max(0, ctx["total"] - ctx["used"])
+        log_snap["context"] = ctx
+
+        snap = {
+            "ts": now,
+            "host": {"id": self.cfg.id, "name": self.cfg.name},
+            "llama": {
+                "online": bool(llama.get("online")),
+                "model": model,
+                "gen_speed_tps": round(gen, 2),
+                "prompt_speed_tps": round(prompt, 2),
+                "speed_source": source,
+                "log": log_snap,
+                "slots": llama.get("slots", []),
+            },
+            "host_metrics": host_metrics,
+            "events": self.events.list(50),
+        }
+        snap["alerts"] = evaluate_alerts(self.cfg.thresholds, snap["llama"],
+                                         host_metrics, logst)
+        return snap
+
+    # ------------------------------------------------------------------
+    def history(self, window_s: int) -> Dict[str, Any]:
+        now = time.time()
+        series: Dict[str, Any] = {}
+
+        def add(ring: RingBuffer, name: str) -> None:
+            pts = downsample(ring.window(name, window_s, now), 600)
+            if pts:
+                series[name] = {"ts": [t for t, _ in pts], "values": [v for _, v in pts]}
+
+        for name in ("gen_speed", "prompt_speed", "ctx_used", "mtp_acceptance"):
+            add(self.ring_llama, name)
+        for name in HOST_SERIES:
+            add(self.ring_host, name)
+        for name in self.ring_host.names():
+            if name.startswith(GPU_PREFIXES):
+                add(self.ring_host, name)
+        return {"window": window_s, "series": series}
+
+    def events_list(self, limit: int = 50) -> List[Dict[str, Any]]:
+        return self.events.list(limit)
+
+    # ------------------------------------------------------------------
+    def portal_summary(self) -> Dict[str, Any]:
+        snap = self.snapshot()
+        ll = snap["llama"]
+        hm = snap["host_metrics"]
+        model = ll.get("model") or {}
+        mem = hm.get("mem") or {}
+        gpus = []
+        for g in hm.get("gpus") or []:
+            gpus.append({
+                "index": g.get("index", 0),
+                "util_pct": g.get("util_pct"),
+                "mem_pct": round(g["mem_used_mb"] / g["mem_total_mb"] * 100.0, 1)
+                if g.get("mem_total_mb") else None,
+            })
+        spark = downsample(self.ring_llama.window("gen_speed", 60, time.time()), 30)
+        alerts = snap.get("alerts", [])
+        return {
+            "id": self.cfg.id,
+            "name": self.cfg.name,
+            "online": ll.get("online", False),
+            "ssh_ok": hm.get("reachable", False),
+            "model_name": model.get("name", ""),
+            "n_params": model.get("n_params"),
+            "gen_speed_tps": ll.get("gen_speed_tps", 0.0),
+            "speed_source": ll.get("speed_source", "api"),
+            "gpus": gpus,
+            "cpu_pct": (hm.get("cpu") or {}).get("usage_pct"),
+            "mem_pct": round(mem["used_mb"] / mem["total_mb"] * 100.0, 1) if mem.get("total_mb") else None,
+            "speed_spark": [[t, v] for t, v in spark],
+            "alerts": alerts,
+            "alerts_count": len([a for a in alerts if a["level"] == "danger"]),
+        }
+
+
+class MonitorRegistry:
+    def __init__(self, app_cfg: AppConfig):
+        self.app_cfg = app_cfg
+        self.monitors: Dict[str, HostMonitor] = {}
+        for h in app_cfg.hosts:
+            self.monitors[h.id] = HostMonitor(h, app_cfg.global_cfg)
+
+    async def start(self) -> None:
+        for m in self.monitors.values():
+            await m.start()
+
+    async def stop(self) -> None:
+        for m in self.monitors.values():
+            await m.stop()
+
+    def get(self, host_id: str) -> Optional[HostMonitor]:
+        return self.monitors.get(host_id)
+
+    def list(self) -> List[Dict[str, Any]]:
+        return [m.portal_summary() for m in self.monitors.values()]

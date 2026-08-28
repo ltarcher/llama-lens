@@ -1,0 +1,39 @@
+<template>
+  <div class="panel glass">
+    <div class="panel-head">
+      <span class="panel-title">网络</span>
+      <span class="mono dim small">{{ ifaces.length }} 个网卡</span>
+    </div>
+    <table class="tbl mono">
+      <thead>
+        <tr><th>网卡</th><th class="num">下行</th><th class="num">上行</th><th class="num">累计 ↓</th><th class="num">累计 ↑</th></tr>
+      </thead>
+      <tbody>
+        <tr v-for="n in ifaces" :key="n.name">
+          <td>{{ n.name }}</td>
+          <td class="num" style="color: var(--cyan)">{{ n.rx_mb_s.toFixed(2) }} MB/s</td>
+          <td class="num" style="color: var(--green)">{{ n.tx_mb_s.toFixed(2) }} MB/s</td>
+          <td class="num dim">{{ fmtBytes(n.rx_total_mb * 1024 * 1024) }}</td>
+          <td class="num dim">{{ fmtBytes(n.tx_total_mb * 1024 * 1024) }}</td>
+        </tr>
+        <tr v-if="!ifaces.length"><td colspan="5" class="faint">无数据</td></tr>
+      </tbody>
+    </table>
+  </div>
+</template>
+
+<script setup>
+import { computed } from 'vue'
+import { fmtBytes } from '../utils'
+
+const props = defineProps({
+  net: { type: Object, default: () => ({}) }
+})
+const ifaces = computed(() => props.net.ifaces || [])
+</script>
+
+<style scoped>
+.panel { padding: 12px 16px; }
+.panel-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+.panel-title { font-size: 11px; color: var(--text-dim); letter-spacing: 1px; }
+</style>

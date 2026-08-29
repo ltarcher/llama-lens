@@ -3,11 +3,11 @@
     <div class="panel-head">
       <span class="panel-title">llama-server 进程</span>
       <span v-if="!found" class="badge warn">未找到进程</span>
-      <span v-else class="badge ok mono">pid {{ pid }}</span>
     </div>
 
     <template v-if="found">
       <div class="metrics mono">
+        <div class="m"><span class="v">{{ pid }}</span><span class="k">PID</span></div>
         <div class="m"><span class="v" :class="cpuLevelClass">{{ cpuRtText }}</span><span class="k">实时 CPU</span></div>
         <div class="m"><span class="v">{{ cpuLifeText }}</span><span class="k">累计 CPU</span></div>
         <div class="m"><span class="v">{{ rssText }}</span><span class="k">RSS</span></div>
@@ -16,12 +16,12 @@
         <div class="m"><span class="v">{{ elapsed || '—' }}</span><span class="k">运行时长</span></div>
       </div>
 
-      <div v-if="service && service.active" class="service">
-        <div class="kv"><span class="k">服务</span><span class="v mono">{{ service.unit }} · {{ service.active }}</span></div>
-        <div class="kv"><span class="k">启动于</span><span class="v mono">{{ service.since || '—' }}</span></div>
-        <div class="kv"><span class="k">服务 CPU 累计</span><span class="v mono">{{ service.cpu_total || '—' }}</span></div>
-        <div class="kv"><span class="k">服务内存</span><span class="v mono">{{ service.memory || '—' }}<span v-if="service.memory_peak" class="faint"> (峰值 {{ service.memory_peak }})</span></span></div>
-        <div class="kv"><span class="k">Tasks</span><span class="v mono">{{ service.tasks || '—' }}</span></div>
+      <div v-if="service && service.active" class="service mono">
+        <span class="k">服务</span><span class="v">{{ service.unit }} · {{ service.active }}</span>
+        <span class="k">启动于</span><span class="v">{{ service.since || '—' }}</span>
+        <span class="k">CPU 累计</span><span class="v">{{ service.cpu_total || '—' }}</span>
+        <span class="k">内存</span><span class="v">{{ service.memory || '—' }}<span v-if="service.memory_peak" class="faint"> (峰值 {{ service.memory_peak }})</span></span>
+        <span class="k">Tasks</span><span class="v">{{ service.tasks || '—' }}</span>
       </div>
 
       <div class="collapse-head" :class="{ open: cmdOpen }" @click="cmdOpen = !cmdOpen">
@@ -57,8 +57,8 @@ const props = defineProps({
   service: { type: Object, default: () => ({}) }
 })
 
-const cmdOpen = ref(false)
-const flagOpen = ref(false)
+const cmdOpen = ref(true)
+const flagOpen = ref(true)
 
 const found = computed(() => !!props.process.found)
 const pid = computed(() => props.process.pid)
@@ -86,11 +86,22 @@ const flagRows = computed(() => Object.entries(props.process.flags || {}))
 .proc { padding: 12px 16px; }
 .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .panel-title { font-size: 11px; color: var(--text-dim); letter-spacing: 1px; }
-.metrics { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 10px; }
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px 12px; margin-bottom: 10px; }
 .m { display: flex; flex-direction: column; gap: 2px; }
 .m .v { font-size: 16px; font-weight: 700; color: var(--text); }
 .m .k { font-size: 10px; color: var(--text-faint); }
-.service { border-top: 1px solid rgba(143, 163, 200, 0.1); padding-top: 6px; margin-bottom: 6px; }
+.service {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  column-gap: 8px;
+  row-gap: 3px;
+  border-top: 1px solid rgba(143, 163, 200, 0.1);
+  padding-top: 8px;
+  margin-bottom: 6px;
+  font-size: 11px;
+}
+.service .k { color: var(--text-faint); }
+.service .v { color: var(--text); word-break: break-all; }
 .cmdline {
   background: rgba(5, 8, 14, 0.6);
   border-radius: 6px;

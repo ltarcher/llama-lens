@@ -30,6 +30,19 @@ export function fmtParams(n) {
   return String(n)
 }
 
+export function fmtTokens(n) {
+  if (n === null || n === undefined || Number.isNaN(n)) return '—'
+  n = Number(n)
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`
+  if (n >= 1e3) return `${(n / 1e3).toFixed(n >= 1e4 ? 0 : 1)}k`
+  return String(Math.round(n))
+}
+
+export function fmtGB(mb) {
+  if (mb === null || mb === undefined || Number.isNaN(mb)) return '—'
+  return `${(mb / 1024).toFixed(1)}G`
+}
+
 export function fmtDuration(s) {
   if (s === null || s === undefined || Number.isNaN(s)) return '—'
   s = Math.floor(s)

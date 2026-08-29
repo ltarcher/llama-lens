@@ -167,7 +167,7 @@ class HostMonitor:
             "events": self.events.list(50),
         }
         snap["alerts"] = evaluate_alerts(self.cfg.thresholds, snap["llama"],
-                                         host_metrics, logst)
+                                         host_metrics, log_snap)
         return snap
 
     # ------------------------------------------------------------------

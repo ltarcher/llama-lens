@@ -19,7 +19,7 @@ from .ssh_conn import SshConnection
 log = logging.getLogger("llamalens.sshpoller")
 
 # ---------------------------------------------------------------------------
-# 批量命令模板（占位符：{process_name} {systemd_unit} {model_ls} {df_mounts}）
+# 批量命令模板（占位符：{process_name} {systemd_unit} {df_mounts}）
 # ---------------------------------------------------------------------------
 
 BATCH_CMD = r"""
@@ -51,13 +51,17 @@ if [ -n "$PID" ]; then
   tr '\0' ' ' < /proc/$PID/cmdline 2>/dev/null; echo
 fi
 echo ==PS==
-ps -eo pid,comm,pcpu,pmem,rss,utime,stime --no-headers 2>/dev/null
+ps -eo pid,comm,pcpu,pmem,rss --no-headers 2>/dev/null
+echo ==PSTICKS==
+awk 'FNR==1 {{ n=split(FILENAME, p, "/"); pid=p[n-1]; i=index($0, ") "); if (i > 0) {{ s=substr($0, i+2); m=split(s, a, " "); if (m >= 13) print pid, a[12], a[13] }} }}' /proc/[0-9]*/stat 2>/dev/null
 echo ==PROCS==
 ls /proc 2>/dev/null | grep -c '^[0-9]'
 echo ==SERVICE==
 systemctl show {systemd_unit} -p Description,ActiveState,SubState,ExecMainStartTimestamp,CPUUsageNSec,MemoryCurrent,MemoryPeak,NTasks 2>/dev/null
 echo ==MODELS==
-ls -l {model_ls} 2>/dev/null
+if [ -n "$PID" ]; then
+  tr '\0' '\n' < /proc/$PID/cmdline 2>/dev/null | awk 'p=="--model"||p=="-m"||p=="--mmproj"{{print; p=""; next}}{{p=$0}}' | xargs -r -d '\n' ls -l 2>/dev/null
+fi
 echo ==END==
 """
 
@@ -335,15 +339,37 @@ def parse_proc(section: str, diff: DiffEngine, ts: float, host_id: str) -> Dict[
     return proc
 
 
-def parse_ps(section: str) -> List[Dict[str, Any]]:
-    """解析 `ps -eo pid,comm,pcpu,pmem,rss,utime,stime`。
+def parse_ps_ticks(section: str) -> Dict[int, int]:
+    """解析 ==PSTICKS== 段（每行 `pid utime stime`，来自 /proc/<pid>/stat，时钟滴答）。
 
-    comm 可能含空格：pid 取首列，pcpu/pmem/rss/utime/stime 取末 5 列，中间为进程名。
+    相比 ps 的 time 列（1s 粒度），/proc 的 utime/stime 为 10ms 粒度，
+    2s 采样窗口下进程 CPU% 不再被量化成 0/50/100/150 的台阶值。
+    """
+    ticks: Dict[int, int] = {}
+    for line in section.splitlines():
+        f = line.split()
+        if len(f) < 3:
+            continue
+        try:
+            pid = int(f[0])
+            utime = int(f[1])
+            stime = int(f[2])
+        except ValueError:
+            continue
+        ticks[pid] = utime + stime
+    return ticks
+
+
+def parse_ps(section: str) -> List[Dict[str, Any]]:
+    """解析 `ps -eo pid,comm,pcpu,pmem,rss`。
+
+    comm 可能含空格：pid 取首列，pcpu/pmem/rss 取末 3 列，中间为进程名。
+    进程 CPU 滴答不在此处（ps time 列仅 1s 粒度），由 ==PSTICKS== 段按 PID 关联。
     """
     procs = []
     for line in section.splitlines():
         f = line.split()
-        if len(f) < 7:
+        if len(f) < 5:
             continue
         try:
             pid = int(f[0])
@@ -351,12 +377,10 @@ def parse_ps(section: str) -> List[Dict[str, Any]]:
             continue
         procs.append({
             "pid": pid,
-            "name": " ".join(f[1:-5]),
-            "cpu_pct_lifetime": _f(f[-5], 0.0),
-            "mem_pct": _f(f[-4], 0.0),
-            "rss_mb": _i(f[-3], 0) // 1024,
-            "utime": _i(f[-2], 0),
-            "stime": _i(f[-1], 0),
+            "name": " ".join(f[1:-3]),
+            "cpu_pct_lifetime": _f(f[-3], 0.0),
+            "mem_pct": _f(f[-2], 0.0),
+            "rss_mb": _i(f[-1], 0) // 1024,
         })
     return procs
 
@@ -439,12 +463,10 @@ class SshPoller:
         self._stopped = False
 
     def _build_batch_cmd(self) -> str:
-        model_ls = " ".join(self.cfg.model_files) if self.cfg.model_files else "/nonexistent"
         mounts = self.cfg.disk_mounts or ["/"]
         return BATCH_CMD.format(
             process_name=self.cfg.process_name,
             systemd_unit=self.cfg.systemd_unit,
-            model_ls=model_ls,
             df_mounts=" ".join(mounts),
         )
 
@@ -467,9 +489,15 @@ class SshPoller:
     async def start(self) -> None:
         log.info("[%s] SshPoller 启动（间隔 %.1fs）", self.host_id, self.cfg.ssh.interval)
         while not self._stopped:
-            if not self._static_done:
-                await self._collect_static()
-            await self._cycle()
+            try:
+                if not self._static_done:
+                    await self._collect_static()
+                await self._cycle()
+            except Exception:
+                # 单周期异常（命令构造/解析错误）不能杀死整个 poller 任务，
+                # 否则主机将永久停在"SSH 断开"且无任何日志痕迹
+                log.exception("[%s] 采集周期异常", self.host_id)
+                self.metrics["reachable"] = False
             await asyncio.sleep(self.cfg.ssh.interval)
 
     def stop(self) -> None:
@@ -536,20 +564,27 @@ class SshPoller:
 
         # Top 进程（实时 CPU% = Δ(utime+stime)/Δt；Top CPU 按实时排序，Top 内存按 RSS 排序）
         procs = parse_ps(sec.get("PS", ""))
+        ps_ticks = parse_ps_ticks(sec.get("PSTICKS", ""))
         ps_rows = []
         for p in procs:
+            cpu_ticks = ps_ticks.get(p["pid"], 0)
             rt = self.diff.process_cpu_pct(
-                "ps:%s:%d" % (self.host_id, p["pid"]), ts, p["utime"] + p["stime"])
+                "ps:%s:%d" % (self.host_id, p["pid"]), ts, cpu_ticks)
             ps_rows.append({
                 "pid": p["pid"],
                 "name": p["name"],
                 "cpu_pct": rt if rt is not None else 0.0,
                 "mem_pct": p["mem_pct"],
                 "rss_mb": p["rss_mb"],
+                "_ticks": cpu_ticks,
             })
         self.diff.prune("ps:%s:" % self.host_id, {p["pid"] for p in procs})
-        top_cpu = sorted(ps_rows, key=lambda r: (-r["cpu_pct"], -r["rss_mb"]))[:8]
+        # Top CPU：实时 CPU% 并列时（如系统空闲全 0.0）按累计 CPU 时间兜底，
+        # 避免列表退化为 Top 内存的副本（RSS 序）看起来"数据是假的"
+        top_cpu = sorted(ps_rows, key=lambda r: (-r["cpu_pct"], -r["_ticks"], -r["rss_mb"]))[:8]
         top_mem = sorted(ps_rows, key=lambda r: (-r["rss_mb"], -r["cpu_pct"]))[:8]
+        for r in top_cpu + top_mem:
+            r.pop("_ticks", None)
         m["top"] = {"cpu": top_cpu, "mem": top_mem}
 
         # 系统（uptime + procs，合并静态信息）
@@ -589,4 +624,3 @@ class SshPoller:
             self.ring.push("gpu_temp_%d" % idx, ts, g.get("temp_c"))
             self.ring.push("gpu_power_%d" % idx, ts, g.get("power_w"))
         self._last_ts = ts
-

@@ -118,7 +118,6 @@ class HostConfig:
     ssh: SshCfg
     process_name: str = "llama-server"
     log: LogCfg = field(default_factory=LogCfg)
-    model_files: List[str] = field(default_factory=list)
     disk_mounts: List[str] = field(default_factory=lambda: ["/"])
     systemd_unit: str = "llama-server.service"
     thresholds: Dict[str, Dict[str, float]] = field(default_factory=dict)
@@ -202,7 +201,6 @@ def _build_host(d: dict, global_t: dict) -> HostConfig:
         ssh=_build_ssh(d.get("ssh")),
         process_name=process_name,
         log=_build_log(d.get("log")),
-        model_files=list(d.get("model_files") or []),
         disk_mounts=[str(x) for x in (d.get("disk_mounts") or ["/"])],
         systemd_unit=d.get("systemd_unit", "llama-server.service"),
         thresholds=merge_thresholds(global_t, d.get("thresholds") or {}),

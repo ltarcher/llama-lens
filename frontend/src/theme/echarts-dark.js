@@ -5,7 +5,7 @@ export const PALETTE = ['#00e5ff', '#00ff9d', '#ffc53d', '#ff3b5c', '#7c8cff', '
 export function baseOption() {
   return {
     backgroundColor: 'transparent',
-    animationDuration: 300,
+    animation: false,
     grid: { left: 52, right: 14, top: 26, bottom: 22 },
     tooltip: {
       trigger: 'axis',

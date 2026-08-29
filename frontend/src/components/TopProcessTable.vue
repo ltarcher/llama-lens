@@ -5,13 +5,20 @@
       <span class="mono faint small">Top {{ rows.length }}</span>
     </div>
     <table class="tbl mono">
+      <colgroup>
+        <col class="c-pid" />
+        <col />
+        <col class="c-num" />
+        <col class="c-num" />
+        <col class="c-num" />
+      </colgroup>
       <thead>
-        <tr><th>PID</th><th>进程</th><th class="num">CPU%</th><th class="num">MEM%</th><th class="num">RSS</th></tr>
+        <tr><th class="num">PID</th><th>进程</th><th class="num">CPU%</th><th class="num">MEM%</th><th class="num">RSS</th></tr>
       </thead>
       <tbody>
         <tr v-for="r in rows" :key="r.pid">
-          <td class="dim">{{ r.pid }}</td>
-          <td :class="{ hl: r.name === 'llama-server' }">{{ r.name }}</td>
+          <td class="num dim">{{ r.pid }}</td>
+          <td :title="r.name" :class="{ hl: r.name === 'llama-server' }">{{ r.name }}</td>
           <td class="num" :class="cpuClass(r.cpu_pct)">{{ r.cpu_pct.toFixed(1) }}</td>
           <td class="num">{{ r.mem_pct.toFixed(1) }}</td>
           <td class="num dim">{{ fmtBytes(r.rss_mb * 1024 * 1024) }}</td>
@@ -38,7 +45,11 @@ function cpuClass(v) {
 </script>
 
 <style scoped>
-.top { padding: 12px 16px; }
+.top { padding: 12px 16px; min-width: 0; }
+.top .tbl { table-layout: fixed; }
+.top .c-pid { width: 13%; }
+.top .c-num { width: 14%; }
+.top .tbl td:nth-child(2) { overflow: hidden; text-overflow: ellipsis; }
 .panel-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
 .panel-title { font-size: 11px; color: var(--text-dim); letter-spacing: 1px; }
 .hl { color: var(--cyan); font-weight: 600; }

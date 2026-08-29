@@ -41,8 +41,5 @@ hosts:
     disk_mounts:              # 监控的挂载点（df 采集）
       - /
       - /share
-    model_files:              # 用于 ls -l 取文件体积（模型 + mmproj）
-      - /share/AI/LLM/unsloth/Qwen3.8-27B-Q6_K.gguf
-      - /share/AI/LLM/unsloth/Qwen3.8-27B-mmproj-BF16.gguf
     # thresholds:             # 每主机阈值覆盖（可选）
     #   mtp: {warn: 80, danger: 65}

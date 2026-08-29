@@ -12,12 +12,15 @@
       <span v-if="totalSpeed > 0" class="sep">·</span>
       <span v-if="totalSpeed > 0">Token 速度 <b class="lv-cyan">{{ totalSpeed.toFixed(1) }} tok/s</b></span>
       <span class="conn" :class="connected ? 'ok' : 'bad'">{{ connected ? 'WS 实时' : '轮询中' }}</span>
+      <span class="clock-sep"></span>
+      <LiveClock />
     </div>
   </header>
 </template>
 
 <script setup>
 import { computed } from 'vue'
+import LiveClock from './LiveClock.vue'
 
 const props = defineProps({
   hosts: { type: Array, default: () => [] },
@@ -68,4 +71,5 @@ const totalSpeed = computed(() => props.hosts.reduce((s, h) => s + (h.gen_speed_
 .conn { padding: 2px 8px; border-radius: 10px; font-size: 11px; }
 .conn.ok { color: var(--green); border: 1px solid rgba(0, 255, 157, 0.35); }
 .conn.bad { color: var(--amber); border: 1px solid rgba(255, 197, 61, 0.35); }
+.clock-sep { width: 1px; height: 16px; background: rgba(143, 163, 200, 0.25); }
 </style>

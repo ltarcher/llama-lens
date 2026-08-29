@@ -287,11 +287,18 @@ class LlamaPoller:
     @staticmethod
     def _parse_v1_model(m: dict) -> Dict[str, Any]:
         model = {}
-        for k in ("n_params", "n_embd", "n_vocab", "size"):
-            if m.get(k) is not None:
-                model[k] = m[k]
-        if m.get("size") is not None:
-            model["file_size"] = m["size"]
+        # 定制 build（llama-cpp-turboquant）把元数据放在 data[0].meta 下，
+        # 顶层字段为 null；先读顶层，再回退 meta（架构文档 §5.1 数据模型）。
+        meta = m.get("meta") or {}
+        for k in ("n_params", "n_embd", "n_vocab", "size", "ftype",
+                  "vocab_type", "n_ctx", "n_ctx_train"):
+            v = m.get(k)
+            if v is None:
+                v = meta.get(k)
+            if v is not None:
+                model[k] = v
+        if model.get("size") is not None:
+            model["file_size"] = model["size"]
         if m.get("owned_by"):
             model.setdefault("owned_by", m["owned_by"])
         return model

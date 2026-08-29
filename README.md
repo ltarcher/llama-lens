@@ -10,7 +10,7 @@ llama.cpp llama-server 多主机实时监控面板。
 
 ## 当前状态
 
-✅ **已实现**（2026-08-28）—— 后端（FastAPI + SSH/HTTP 采集 + WS 推送）与前端（Vue 3 + ECharts）均已完成，
+✅ **v1.0.0**（2026-08-29）—— 首个发布版本。后端（FastAPI + SSH/HTTP 采集 + WS 推送）与前端（Vue 3 + ECharts）均已完成，
 `frontend/dist` 已构建，`./run.sh` 可直接启动。
 
 ## 文档索引
@@ -21,7 +21,7 @@ llama.cpp llama-server 多主机实时监控面板。
 | [docs/02-架构设计文档.md](docs/02-架构设计文档.md) | 架构、采集、数据模型、API、部署 |
 | [docs/03-UI与交互设计文档.md](docs/03-UI与交互设计文档.md) | 视觉规范、页面布局、组件、交互 |
 
-## 技术栈（规划）
+## 技术栈
 
 - 后端：Python 3.9 + FastAPI + uvicorn + paramiko（SSH 只读采集）
 - 前端：Vue 3 + Vite + ECharts 5 + Vue Router
@@ -32,7 +32,7 @@ llama.cpp llama-server 多主机实时监控面板。
 - ai.lan — Qwen3.8-27B-Q6_K（27.32B）· 双 RTX 3080 · llama-server :8080
 - 详见 01-需求文档.md 附录 A
 
-## 快速开始（实现后）
+## 快速开始
 
 ```bash
 cp config/hosts.example.yaml config/hosts.yaml   # 填写主机信息
@@ -40,3 +40,9 @@ cp .env.example .env                              # 填写 SSH 密码
 cd frontend && npm install && npm run build
 ./run.sh                                          # http://<本机>:8000
 ```
+
+## 版本记录
+
+| 版本 | 日期 | 说明 |
+|---|---|---|
+| v1.0.0 | 2026-08-29 | 首个发布版本：多主机实时监控（门户 + 单主机详情）、WS 1s 实时推送、阈值飘红、Top CPU 精度修复（/proc stat 直读）、SSH 断连自愈 |

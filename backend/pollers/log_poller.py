@@ -135,23 +135,40 @@ class LogPoller:
     async def start(self) -> None:
         log.info("[%s] LogPoller 启动（unit=%s follow=%s）",
                  self.cfg.id, self.cfg.log.unit, self.cfg.log.follow)
-        while not self._stopped:
-            if not await self.ssh.ensure_connected():
-                self.available = False
-                self.state["available"] = False
-                await asyncio.sleep(self._backoff)
-                self._backoff = min(self._backoff * 2, 30.0)
-                continue
-            self._backoff = 1.0
-            if not self.state["boot"]:
-                await self._fetch_boot_block()
-            if self.cfg.log.follow:
-                await self._follow()
-            else:
-                await self._poll_mode()
+        cfg = self.cfg.log
+        if cfg.source == "file" and not cfg.path:
+            # source=file 必须配置 path：否则 tail 命令无文件参数会读 SSH
+            # channel 的 stdin（paramiko 永不关闭），挂起至超时并反复拖垮
+            # 共享连接，表现为"SSH 命令执行失败"（空错误信息）
+            log.error("[%s] 日志配置错误: source=file 但未配置 log.path，日志采集已禁用",
+                      self.cfg.id)
             self.available = False
             self.state["available"] = False
-            await asyncio.sleep(1.0)
+            return
+        while not self._stopped:
+            try:
+                if not await self.ssh.ensure_connected():
+                    self.available = False
+                    self.state["available"] = False
+                    await asyncio.sleep(self._backoff)
+                    self._backoff = min(self._backoff * 2, 30.0)
+                    continue
+                self._backoff = 1.0
+                if not self.state["boot"]:
+                    await self._fetch_boot_block()
+                if cfg.follow:
+                    await self._follow()
+                else:
+                    await self._poll_mode()
+                self.available = False
+                self.state["available"] = False
+                await asyncio.sleep(1.0)
+            except Exception:
+                # 单轮异常不能杀死整个 poller 任务（同 SshPoller）
+                log.exception("[%s] 日志采集异常", self.cfg.id)
+                self.available = False
+                self.state["available"] = False
+                await asyncio.sleep(1.0)
 
     def stop(self) -> None:
         self._stopped = True

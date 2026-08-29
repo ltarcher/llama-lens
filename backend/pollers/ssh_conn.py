@@ -104,7 +104,7 @@ class SshConnection:
                 return True
             except Exception as e:
                 self._drop()
-                log.warning("[%s] SSH 连接失败: %s", self.host_id, e)
+                log.warning("[%s] SSH 连接失败: %s: %s", self.host_id, type(e).__name__, e)
                 self._cooldown()
                 return False
 
@@ -137,7 +137,7 @@ class SshConnection:
             self._fail_streak = 0
             return out
         except Exception as e:
-            log.warning("[%s] SSH 命令执行失败: %s", self.host_id, e)
+            log.warning("[%s] SSH 命令执行失败: %s: %s", self.host_id, type(e).__name__, e)
             self._drop()
             self._cooldown()
             return None

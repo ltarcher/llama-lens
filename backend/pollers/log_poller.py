@@ -96,7 +96,10 @@ def _empty_state() -> Dict[str, Any]:
         "tg_3s_tps": None,
         "prompt_progress": None,
         "prompt_speed_tps": None,
+        "prompt_total_tokens": None,
+        "prompt_elapsed_s": None,
         "is_child": None,
+        "started_at": None,
     }
 
 
@@ -119,6 +122,7 @@ class LogPoller:
             "graphs_reused": None,
             "boot": {},
             "last_task": None,
+            "last_prefill": None,
         }
         self._pid: Optional[int] = None
         self._pid_candidate: Optional[int] = None
@@ -130,6 +134,7 @@ class LogPoller:
         self._summary: Dict[str, Any] = {}
         self._stopped = False
         self._backoff = 1.0
+        self._prefill_task: Optional[int] = None
 
     # ------------------------------------------------------------------
     async def start(self) -> None:
@@ -326,6 +331,8 @@ class LogPoller:
         self.state["graphs_reused"] = None
         self.state["boot"] = {}
         self.state["last_task"] = None
+        self.state["last_prefill"] = None
+        self._prefill_task = None
         self._summary = {}
         self.events.reset_task_state()
 
@@ -405,6 +412,22 @@ class LogPoller:
             st["task_id"] = _i(m.group(2))
             st["prompt_progress"] = _f(m.group(4))
             st["prompt_speed_tps"] = _f(m.group(6))
+            st["prompt_total_tokens"] = _i(m.group(3))
+            st["prompt_elapsed_s"] = _f(m.group(5))
+            # 最近一次预填充的持久记录（总览卡非预填充期也展示）
+            self.state["last_prefill"] = {
+                "speed": st["prompt_speed_tps"],
+                "ts": time.time(),
+                "progress": st["prompt_progress"],
+                "n_tokens": st["prompt_total_tokens"],
+            }
+            # 每任务首条 prompt 行 → 预填充开始事件
+            if self._prefill_task != st["task_id"]:
+                self._prefill_task = st["task_id"]
+                ev = "任务 #%s 预填充开始" % st["task_id"]
+                if st["prompt_total_tokens"]:
+                    ev += " (prompt %d tokens)" % st["prompt_total_tokens"]
+                self.events.emit(time.time(), "info", "prefill_start", ev)
             return
 
         m = RE_RELEASE.search(msg)
@@ -416,6 +439,7 @@ class LogPoller:
         if m:
             st["task_id"] = _i(m.group(2))
             st["is_child"] = _i(m.group(3))
+            st["started_at"] = time.time()
             self._summary = {}
             self.events.set_task_running(time.time(), True, st["task_id"])
             return
@@ -551,6 +575,10 @@ class LogPoller:
         st["tg_3s_tps"] = None
         st["prompt_progress"] = None
         st["prompt_speed_tps"] = None
+        st["prompt_total_tokens"] = None
+        st["prompt_elapsed_s"] = None
+        st["started_at"] = None
+        self._prefill_task = None
 
         # 任务被中断（手动停止/断连）时 llama-server 不打印汇总行（eval/total time、
         # draft acceptance），只有 release 行 → 标注"已中断"

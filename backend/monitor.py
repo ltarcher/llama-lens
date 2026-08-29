@@ -24,7 +24,7 @@ from .pollers.ssh_host import SshPoller
 log = logging.getLogger("llamalens.monitor")
 
 HOST_SERIES = ("cpu", "mem_used", "mem_buff_cache", "swap_used",
-               "net_rx", "net_tx", "proc_cpu")
+               "net_rx", "net_tx", "proc_cpu", "load_1", "load_5", "load_15")
 GPU_PREFIXES = ("gpu_util_", "gpu_mem_", "gpu_temp_", "gpu_power_")
 
 
@@ -80,6 +80,10 @@ class HostMonitor:
                 self.ring_llama.push("gen_speed", now, gen if online else None)
                 self.ring_llama.push("prompt_speed", now, prompt if online else None)
                 self._snapshot = self._build_snapshot(gen, prompt)
+                # 上下文占用 1s 采样（API 实时值优先、日志兜底，取自合并后快照）；
+                # 任务结束点由 LogPoller 另行写入（权威值），离线写 None 形成断点
+                ctx_used = (self._snapshot["llama"]["log"].get("context") or {}).get("used")
+                self.ring_llama.push("ctx_used", now, ctx_used if online else None)
             except Exception:
                 log.exception("[%s] tick 失败", self.cfg.id)
 
@@ -168,6 +172,8 @@ class HostMonitor:
         }
         snap["alerts"] = evaluate_alerts(self.cfg.thresholds, snap["llama"],
                                          host_metrics, log_snap)
+        # 阈值穿越事件（级别变化：升级/恢复）
+        self.events.check_alerts(snap["alerts"])
         return snap
 
     # ------------------------------------------------------------------

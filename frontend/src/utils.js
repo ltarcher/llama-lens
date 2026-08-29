@@ -84,6 +84,17 @@ export function alertOf(alerts, metric) {
   return alerts.find((a) => a.metric === metric) || null
 }
 
+// ---------------- 条形图动态量程（1/2/2.5/5 × 10^n 取整） ----------------
+export function niceMax(v) {
+  if (v === null || v === undefined || !Number.isFinite(v) || v <= 0) return 10
+  const exp = Math.floor(Math.log10(v))
+  const base = Math.pow(10, exp)
+  for (const m of [1, 2, 2.5, 5, 10]) {
+    if (m * base >= v) return m * base
+  }
+  return 10 * base
+}
+
 // ---------------- sparkline（内联 SVG 路径） ----------------
 export function sparkPath(points, w = 120, h = 28, pad = 2) {
   if (!points || points.length < 2) return ''

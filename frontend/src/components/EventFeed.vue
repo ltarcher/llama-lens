@@ -1,5 +1,5 @@
 <template>
-  <div class="feed glass">
+  <div class="feed glass" :class="{ fill }">
     <div class="feed-head">
       <span class="section-title" style="margin: 0">事件流</span>
       <span class="mono faint small">{{ events.length }} / 200</span>
@@ -26,7 +26,8 @@ import { ref, watch, nextTick, computed } from 'vue'
 import { fmtTimeShort } from '../utils'
 
 const props = defineProps({
-  events: { type: Array, default: () => [] }
+  events: { type: Array, default: () => [] },
+  fill: { type: Boolean, default: false } // 铺满父容器高度（任务区右卡）
 })
 
 const box = ref(null)
@@ -67,6 +68,7 @@ watch(
 
 <style scoped>
 .feed { position: relative; display: flex; flex-direction: column; }
+.feed.fill .feed-box { flex: 1; height: auto; min-height: 0; }
 .feed-head {
   display: flex;
   align-items: center;

@@ -24,48 +24,48 @@
       </template>
 
       <template v-else>
-        <!-- ============ AI 核心指标区 ============ -->
+        <!-- ============ 实时总览区 ============ -->
         <section>
-          <div class="section-title">AI 核心指标</div>
-          <div class="kpi-row">
-            <KpiCard
+          <div class="section-title">实时总览</div>
+          <div class="gauge-row">
+            <BarCard
               title="Token 生成速度"
               :value="llamaOnline ? snap.llama.gen_speed_tps : null"
               unit="tok/s"
-              :level="genLevel"
               :spark="sparkGen"
-              :source="snap.llama.speed_source"
-              :sub="offlineNote"
+              :sub="speedSub"
+              :foot="genFoot"
             />
-            <KpiCard
-              title="Prompt 处理速度"
-              :value="llamaOnline ? snap.llama.prompt_speed_tps : null"
+            <BarCard
+              title="预填充速度"
+              :value="promptVal"
               unit="tok/s"
+              :progress="prefillProgress"
               :spark="sparkPrompt"
-              :sub="offlineNote"
+              :sub="promptSub"
+              :foot="promptFoot"
             />
-            <KpiCard
+            <BarCard
               title="上下文占用"
-              :value="ctxPct"
-              unit="%"
-              :digits="1"
+              :value="ctxUsedVal"
               :level="ctxLevel"
-              :sub="ctxSub"
+              :bar-max="ctxTotal"
+              :spark="sparkCtx"
+              :sub="ctxBarSub"
+              :badge="ctxBadge"
+              :fmt="fmtCtxNum"
+              :fmt-compact="fmtTokens"
             />
-            <KpiCard
+            <GaugeCard
               title="MTP 接受率"
               :value="mtpPct"
               unit="%"
-              :digits="1"
               :level="mtpLevel"
-              :sub="mtpSub"
+              :spark="sparkMtp"
+              :sub="mtpGaugeSub"
+              :zones="mtpZones"
+              :zone-colors="mtpZoneColors"
             />
-          </div>
-
-          <div class="state-row">
-            <LlamaStateCard :log="snap.llama.log" :online="llamaOnline" />
-            <ContextCard :context="ctx" />
-            <MtpCard :mtp="mtp" :flags="flags" />
           </div>
         </section>
 
@@ -76,6 +76,15 @@
             <GpuPanel v-for="g in gpus" :key="g.index" :gpu="g" :alerts="alerts" />
           </div>
           <div v-else class="glass placeholder"><span class="icon">▣</span>数据不可用（SSH 断开）</div>
+        </section>
+
+        <!-- ============ 实时生成任务区 ============ -->
+        <section>
+          <div class="section-title">实时生成任务</div>
+          <div class="task-row">
+            <LlamaStateCard :log="snap.llama.log" :online="llamaOnline" :slots="slots" :flags="flags" :now="snap.ts" />
+            <EventFeed :events="events" fill />
+          </div>
         </section>
 
         <!-- ============ 系统区 ============ -->
@@ -127,22 +136,22 @@
             </span>
           </div>
           <div class="trend-grid">
-            <TrendChart title="Token 速度" unit="tok/s" :series="chartSpeed" :height="170" />
+            <div class="trend-group">llama</div>
+            <TrendChart title="Token 生成速度" unit="tok/s" :series="chartGen" :height="170" />
+            <TrendChart title="预填充速度" unit="tok/s" :series="chartPrompt" :height="170" />
+            <TrendChart title="上下文占用" unit="tokens" :series="chartCtx" :height="170" />
+            <TrendChart title="MTP 接受率" unit="%" :series="chartMtp" :height="170" :y-max="100" :y-min="0" />
+            <div class="trend-group">GPU</div>
             <TrendChart title="GPU 利用率" unit="%" :series="chartGpuUtil" :height="170" :y-max="100" />
             <TrendChart title="GPU 显存" unit="MB" :series="chartGpuMem" :height="170" />
             <TrendChart title="GPU 温度" unit="°C" :series="chartGpuTemp" :height="170" />
             <TrendChart title="GPU 功耗" unit="W" :series="chartGpuPower" :height="170" />
+            <div class="trend-group">系统</div>
             <TrendChart title="CPU" unit="%" :series="chartCpu" :height="170" :y-max="100" />
             <TrendChart title="内存" unit="MB" :series="chartMem" :height="170" />
             <TrendChart title="网络" unit="MB/s" :series="chartNet" :height="170" />
-            <TrendChart title="上下文占用" unit="tokens" :series="chartCtx" :height="170" />
-            <TrendChart title="MTP 接受率" unit="%" :series="chartMtp" :height="170" :y-max="100" :y-min="0" />
+            <TrendChart title="负载均值" unit="load" :series="chartLoad" :height="170" />
           </div>
-        </section>
-
-        <!-- ============ 事件流 ============ -->
-        <section>
-          <EventFeed :events="events" />
         </section>
       </template>
     </main>
@@ -155,12 +164,11 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { api } from '../api'
 import { useHostStream } from '../stream'
-import { fmtNum, fmtClock, alertLevel } from '../utils'
+import { fmtNum, fmtClock, fmtTokens, fmtDuration, alertLevel } from '../utils'
 import TopBar from '../components/TopBar.vue'
-import KpiCard from '../components/KpiCard.vue'
+import BarCard from '../components/BarCard.vue'
+import GaugeCard from '../components/GaugeCard.vue'
 import LlamaStateCard from '../components/LlamaStateCard.vue'
-import ContextCard from '../components/ContextCard.vue'
-import MtpCard from '../components/MtpCard.vue'
 import GpuPanel from '../components/GpuPanel.vue'
 import CpuPanel from '../components/CpuPanel.vue'
 import MemPanel from '../components/MemPanel.vue'
@@ -199,12 +207,21 @@ const ctx = computed(() => (llama.value.log && llama.value.log.context) || {})
 const mtp = computed(() => (llama.value.log && llama.value.log.mtp) || {})
 const flags = computed(() => (hm.value.process && hm.value.process.flags) || {})
 
-const ctxPct = computed(() => (ctx.value.pct === null || ctx.value.pct === undefined ? null : ctx.value.pct))
-const ctxLevel = computed(() => alertLevel(alerts.value, 'ctx'))
-const ctxSub = computed(() => {
-  if (ctx.value.used === null || ctx.value.used === undefined) return '等待任务结束'
-  return `${fmtNum(ctx.value.used)} / ${fmtNum(ctx.value.total || 0)} tokens`
+const ctxUsedVal = computed(() => {
+  const u = ctx.value.used
+  return u === null || u === undefined ? null : u
 })
+const ctxLevel = computed(() => alertLevel(alerts.value, 'ctx'))
+const ctxBarSub = computed(() => {
+  const c = ctx.value
+  if (c.used === null || c.used === undefined) return '等待任务结束'
+  if (c.pct === null || c.pct === undefined) return ''
+  const parts = [`${c.pct.toFixed(1)}%`]
+  if (c.remaining !== null && c.remaining !== undefined) parts.push(`剩 ${fmtTokens(c.remaining)}`)
+  return parts.join(' · ')
+})
+const fmtCtxNum = (v) => fmtNum(v, 0)
+const ctxBadge = computed(() => (ctx.value.truncated ? '已截断' : ''))
 // 原始值依赖：避免 chartCtx 随每秒 WS 快照（ctx 新对象）重算
 const ctxTotal = computed(() => {
   const t = ctx.value.total
@@ -216,14 +233,69 @@ const mtpPct = computed(() => {
   return a === null || a === undefined ? null : a * 100
 })
 const mtpLevel = computed(() => alertLevel(alerts.value, 'mtp'))
-const mtpSub = computed(() => {
-  if (mtpPct.value === null) return '等待任务结束'
-  return `mean len ${mtp.value.mean_len === null || mtp.value.mean_len === undefined ? '—' : mtp.value.mean_len.toFixed(2)}`
+const speedSub = computed(() => {
+  const src = snap.value && snap.value.llama.speed_source ? `来源 ${snap.value.llama.speed_source}` : ''
+  return [src, offlineNote.value].filter(Boolean).join(' · ')
 })
-
-const genLevel = computed(() => {
-  // 生成速度本身无阈值告警；llama 离线时置灰
-  return 'normal'
+const genFoot = computed(() => {
+  const st = llama.value.log && llama.value.log.state
+  if (st && st.tg_tps !== null && st.tg_tps !== undefined) return `任务均速 ${st.tg_tps.toFixed(1)}`
+  return ''
+})
+// 预填充速度：预填充中显示实时速度，停止后归 0（最近一次预填充信息保留在 sub/foot）
+const lastPrefill = computed(() => {
+  const log = llama.value.log
+  return (log && log.last_prefill) || null
+})
+const promptVal = computed(() => {
+  if (!llamaOnline.value) return null
+  const st = llama.value.log && llama.value.log.state
+  if (st && st.phase === 'prompt_processing') {
+    const v = snap.value && snap.value.llama ? snap.value.llama.prompt_speed_tps : null
+    return v === null || v === undefined ? null : v
+  }
+  return 0
+})
+const promptSub = computed(() => {
+  const st = llama.value.log && llama.value.log.state
+  if (llamaOnline.value && st && st.phase === 'prompt_processing') return speedSub.value
+  const lp = lastPrefill.value
+  if (lp && lp.ts) return `上次 ${fmtClock(lp.ts)}`
+  return speedSub.value
+})
+const prefillEta = computed(() => {
+  const st = llama.value.log && llama.value.log.state
+  if (!st || st.phase !== 'prompt_processing') return null
+  const p = st.prompt_progress
+  const total = st.prompt_total_tokens
+  const speed = st.prompt_speed_tps
+  if (p === null || p === undefined || !total || !speed || speed <= 0) return null
+  return Math.max(0, (1 - p) * total / speed)
+})
+const prefillProgress = computed(() => {
+  const st = llama.value.log && llama.value.log.state
+  if (!st || st.phase !== 'prompt_processing') return null
+  const p = st.prompt_progress
+  return p === null || p === undefined ? null : p
+})
+const promptFoot = computed(() => {
+  const st = llama.value.log && llama.value.log.state
+  if (st && st.phase === 'prompt_processing') {
+    const parts = []
+    if (st.prompt_progress !== null && st.prompt_progress !== undefined) {
+      parts.push(`进度 ${(st.prompt_progress * 100).toFixed(0)}%`)
+    }
+    if (prefillEta.value !== null) parts.push(`预计剩余 ${fmtDuration(prefillEta.value)}`)
+    return parts.join(' · ')
+  }
+  const lp = lastPrefill.value
+  if (lp) {
+    const parts = []
+    if (lp.n_tokens) parts.push(`${fmtTokens(lp.n_tokens)} tokens`)
+    if (lp.progress !== null && lp.progress !== undefined) parts.push(`进度 ${(lp.progress * 100).toFixed(0)}%`)
+    return parts.join(' · ')
+  }
+  return ''
 })
 
 // ---------------- 系统数据 ----------------
@@ -273,6 +345,44 @@ const topStats = computed(() => {
   }
 })
 
+// ---------------- 实时总览仪表 ----------------
+// MTP 接受率阈值反向：低为差（<65 红 / 65-80 黄 / ≥80 绿）
+const mtpZones = [
+  [0.65, 'rgba(255,59,92,0.16)'],
+  [0.8, 'rgba(255,197,61,0.16)'],
+  [1, 'rgba(0,255,157,0.12)']
+]
+const mtpZoneColors = [
+  [0.65, '#ff3b5c'],
+  [0.8, '#ffc53d'],
+  [1, '#00ff9d']
+]
+const mtpGaugeSub = computed(() => {
+  const a = mtp.value.accepted
+  const g = mtp.value.generated
+  const ml = mtp.value.mean_len
+  if (a === null || a === undefined || g === null || g === undefined) return ''
+  const spec = flags.value.spec_type ? `${flags.value.spec_type}×${flags.value.spec_draft_n_max ?? '?'} ` : ''
+  return `${spec}${fmtNum(a)} / ${fmtNum(g)} · mean ${ml === null || ml === undefined ? '—' : ml.toFixed(2)}`
+})
+
+// ---------------- 总览 60s spark ----------------
+function mapTail(name, fn) {
+  const s = history.value && history.value.series ? history.value.series[name] : null
+  if (!s || !s.ts.length) return []
+  const now = s.ts[s.ts.length - 1]
+  const pts = []
+  for (let i = 0; i < s.ts.length; i++) {
+    if (now - s.ts[i] > 60) continue
+    const v = s.values[i]
+    pts.push([s.ts[i], v === null || v === undefined ? null : fn(v)])
+  }
+  return pts
+}
+
+const sparkCtx = computed(() => mapTail('ctx_used', (v) => v))
+const sparkMtp = computed(() => mapTail('mtp_acceptance', (v) => v * 100))
+
 // ---------------- 趋势图 ----------------
 const windows = [
   { s: 300, label: '5m' },
@@ -295,13 +405,13 @@ function seriesOf(name, opts = {}) {
   return { name: opts.name || name, ts: s.ts, values: s.values, color: opts.color, step: opts.step, area: opts.area, stack: opts.stack, markLine: opts.markLine }
 }
 
-const chartSpeed = computed(() => {
-  const out = []
-  const g = seriesOf('gen_speed', { name: 'gen', color: '#00e5ff', area: true })
-  const p = seriesOf('prompt_speed', { name: 'prompt', color: '#00ff9d', area: true })
-  if (g) out.push(g)
-  if (p) out.push(p)
-  return out
+const chartGen = computed(() => {
+  const s = seriesOf('gen_speed', { name: 'gen', color: '#00e5ff', area: true })
+  return s ? [s] : []
+})
+const chartPrompt = computed(() => {
+  const s = seriesOf('prompt_speed', { name: 'prompt', color: '#00ff9d', area: true })
+  return s ? [s] : []
 })
 const chartGpuUtil = computed(() => {
   const colors = ['#00e5ff', '#00ff9d', '#ffc53d', '#ff3b5c']
@@ -359,8 +469,18 @@ const chartNet = computed(() => {
   if (t) out.push(t)
   return out
 })
+const chartLoad = computed(() => {
+  const out = []
+  const l1 = seriesOf('load_1', { name: '1m', color: '#00e5ff' })
+  const l5 = seriesOf('load_5', { name: '5m', color: '#00ff9d' })
+  const l15 = seriesOf('load_15', { name: '15m', color: '#ffc53d' })
+  if (l1) out.push(l1)
+  if (l5) out.push(l5)
+  if (l15) out.push(l15)
+  return out
+})
 const chartCtx = computed(() => {
-  const s = seriesOf('ctx_used', { name: 'n_tokens', color: '#00e5ff', step: true })
+  const s = seriesOf('ctx_used', { name: 'n_tokens', color: '#00e5ff' })
   if (!s) return []
   const total = ctxTotal.value
   if (total) {
@@ -381,19 +501,9 @@ const chartMtp = computed(() => {
   return [s]
 })
 
-// KPI sparkline（60s，取自历史序列尾部）
-function tail60(name) {
-  const s = history.value && history.value.series ? history.value.series[name] : null
-  if (!s || !s.ts.length) return []
-  const now = s.ts[s.ts.length - 1]
-  const pts = []
-  for (let i = 0; i < s.ts.length; i++) {
-    if (now - s.ts[i] <= 60) pts.push([s.ts[i], s.values[i]])
-  }
-  return pts
-}
-const sparkGen = computed(() => tail60('gen_speed'))
-const sparkPrompt = computed(() => tail60('prompt_speed'))
+// 速度卡 60s spark（取自历史序列尾部）
+const sparkGen = computed(() => mapTail('gen_speed', (v) => v))
+const sparkPrompt = computed(() => mapTail('prompt_speed', (v) => v))
 
 onMounted(() => {
   loadHistory()
@@ -407,8 +517,6 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .content {
-  max-width: 1720px;
-  margin: 0 auto;
   padding: 18px 24px 40px;
   display: flex;
   flex-direction: column;
@@ -425,17 +533,17 @@ onBeforeUnmount(() => {
   text-align: center;
   animation: dangerPulse 1.2s infinite;
 }
-.kpi-row {
+.gauge-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
-  margin-bottom: 12px;
 }
-.state-row {
+.task-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: minmax(0, 640px) minmax(0, 1fr);
   gap: 12px;
 }
+.task-row > * { height: 320px; }
 .gpu-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -482,11 +590,27 @@ onBeforeUnmount(() => {
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;
 }
+.trend-group {
+  grid-column: 1 / -1;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--text-faint);
+  padding: 0 4px;
+  border-bottom: 1px solid rgba(143, 163, 200, 0.12);
+}
+.trend-group:first-child { margin-top: -4px; }
 @media (max-width: 1500px) {
-  .kpi-row { grid-template-columns: repeat(2, 1fr); }
-  .state-row { grid-template-columns: 1fr; }
   .gpu-grid { grid-template-columns: 1fr; }
   .model-grid { grid-template-columns: 1fr; }
   .proc-grid { grid-template-columns: 1fr; }
+  .gauge-row { grid-template-columns: repeat(2, 1fr); }
+  .task-row { grid-template-columns: 1fr; }
+}
+@media (max-width: 1100px) {
+  .sys-grid { grid-template-columns: 1fr; }
+  .trend-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .gauge-row { grid-template-columns: 1fr; }
 }
 </style>

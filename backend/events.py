@@ -12,7 +12,9 @@
 import asyncio
 import time
 from collections import deque
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
+
+from .config import INVERTED_METRICS
 
 
 class EventDetector:
@@ -29,6 +31,7 @@ class EventDetector:
         self._pending_task_end: Optional[tuple] = None
         self._pending_task_end_timer = None
         self._ended_task_ids: deque = deque(maxlen=200)
+        self._alert_levels: Dict[str, tuple] = {}
 
     # ------------------------------------------------------------------
     def emit(self, ts: Optional[float], level: str, type_: str, msg: str) -> None:
@@ -187,6 +190,63 @@ class EventDetector:
         self.emit(ts, "info", "llama_boot", "llama 启动: " + info)
 
     # ------------------------------------------------------------------
+    # 阈值穿越事件：按 metric 跟踪级别变化（normal/warn/danger）
+    ALERT_COOLDOWN_S = 30.0
+    _ALERT_NAMES = {
+        "cpu": "CPU",
+        "mem": "内存",
+        "ctx": "上下文",
+        "mtp": "MTP 接受率",
+    }
+    _GPU_KIND_NAMES = {"util": "利用率", "mem": "显存", "temp": "温度", "power": "功耗"}
+
+    @classmethod
+    def _alert_name(cls, metric: str) -> str:
+        if metric in cls._ALERT_NAMES:
+            return cls._ALERT_NAMES[metric]
+        if metric.startswith("gpu") and "." in metric:
+            idx, kind = metric.split(".", 1)
+            return "GPU%s %s" % (idx[3:], cls._GPU_KIND_NAMES.get(kind, kind))
+        if metric.startswith("disk:"):
+            return "磁盘 %s" % metric[5:]
+        return metric
+
+    def check_alerts(self, alerts: List[Dict[str, Any]]) -> None:
+        """每次快照 evaluate_alerts 后调用：级别变化（升级/恢复）时发事件。
+        首次观测只记基线不发（基线不占冷却）；同一 metric 两次事件最小间隔
+        30s，防阈值边缘抖动（被抑制的变化只更新状态不发事件）。
+        llama/ssh 已有专门的上下线事件，不在此重复。"""
+        now = time.time()
+        current = {a["metric"]: a for a in alerts if a.get("metric") not in ("llama", "ssh")}
+        for metric, a in current.items():
+            level = a.get("level", "warn")
+            prev = self._alert_levels.get(metric)
+            if prev is None:
+                self._alert_levels[metric] = (level, None)
+                continue
+            prev_level, last_emit = prev
+            if level == prev_level:
+                continue
+            if last_emit is not None and now - last_emit < self.ALERT_COOLDOWN_S:
+                self._alert_levels[metric] = (level, last_emit)
+                continue
+            op = "<=" if metric in INVERTED_METRICS else ">="
+            tag = "危险" if level == "danger" else "警告"
+            msg = "%s %s %s %s（%s）" % (
+                self._alert_name(metric), _fmt_alert_val(metric, a.get("value")),
+                op, _fmt_alert_val(metric, a.get("threshold")), tag)
+            self.emit(now, level, "alert", msg)
+            self._alert_levels[metric] = (level, now)
+        for metric, (level, last_emit) in list(self._alert_levels.items()):
+            if level == "normal" or metric in current:
+                continue
+            if last_emit is not None and now - last_emit < self.ALERT_COOLDOWN_S:
+                self._alert_levels[metric] = (level, last_emit)
+                continue
+            self.emit(now, "info", "alert", "%s 恢复正常" % self._alert_name(metric))
+            self._alert_levels[metric] = ("normal", now)
+
+    # ------------------------------------------------------------------
     def list(self, limit: int = 50) -> List[dict]:
         items = list(self.events)
         return items[-limit:] if limit > 0 else items
@@ -202,6 +262,15 @@ class EventDetector:
 
 def _short(path: str) -> str:
     return path.rsplit("/", 1)[-1] if path else path
+
+
+def _fmt_alert_val(metric: str, v: Any) -> str:
+    if v is None:
+        return "—"
+    s = ("%.1f" % v) if isinstance(v, float) else str(v)
+    if metric.endswith(".temp"):
+        return s + "°C"
+    return s + "%"
 
 
 def _fmt_duration(seconds: float) -> str:

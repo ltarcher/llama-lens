@@ -99,7 +99,7 @@ const paramRows = computed(() => {
 </script>
 
 <style scoped>
-.slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 12px; }
+.slots { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 12px; }
 .slot { padding: 12px 16px; }
 .panel-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .panel-title { font-size: 11px; color: var(--text-dim); letter-spacing: 1px; }

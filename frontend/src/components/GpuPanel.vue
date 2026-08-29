@@ -1,8 +1,14 @@
 <template>
   <div class="gpu glass" :class="levelClass">
     <div class="gpu-head">
-      <span class="gpu-name">GPU{{ gpu.index }} · {{ gpu.name || 'NVIDIA GPU' }}</span>
-      <span class="mono faint small">{{ gpu.driver }}</span>
+      <span class="gpu-name">
+        <svg class="gpu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+          <rect x="6" y="6" width="12" height="12" rx="1.5" />
+          <rect x="9.5" y="9.5" width="5" height="5" rx="0.5" />
+          <path d="M9 6V3M12 6V3M15 6V3M9 21v-3M12 21v-3M15 21v-3M6 9H3M6 12H3M6 15H3M21 9h-3M21 12h-3M21 15h-3" />
+        </svg>
+        GPU{{ gpu.index }} · {{ gpu.name || 'NVIDIA GPU' }}
+      </span>
     </div>
 
     <div class="gpu-body">
@@ -32,13 +38,19 @@
           <div class="bar"><i :class="memBarClass" :style="{ width: memPctNum + '%' }"></i></div>
         </div>
 
-        <div class="grid2">
+        <div class="grid3">
           <div class="kv"><span class="k">温度</span><span class="v mono" :class="tempLevelClass">{{ tempText }}°C</span></div>
+          <div class="kv"><span class="k">显存温度</span><span class="v mono">{{ tempMemText }}<template v-if="tempMemText !== '—'">°C</template></span></div>
           <div class="kv"><span class="k">功耗</span><span class="v mono">{{ powerText }} W</span></div>
+          <div class="kv"><span class="k">显存利用率</span><span class="v mono">{{ memUtilText }}</span></div>
           <div class="kv"><span class="k">风扇</span><span class="v mono">{{ fanText }}</span></div>
           <div class="kv"><span class="k">频率</span><span class="v mono">{{ clockText }}</span></div>
           <div class="kv"><span class="k">PCIe</span><span class="v mono">gen{{ gpu.pcie_gen ?? '—' }} x{{ gpu.pcie_width ?? '—' }}</span></div>
           <div class="kv"><span class="k">P-State</span><span class="v mono">{{ gpu.pstate || '—' }}</span></div>
+          <div class="kv"><span class="k">降频状态</span><span class="v mono" :class="throttleClass">{{ throttleText }}</span></div>
+          <div class="kv"><span class="k">ECC 纠错/不可纠</span><span class="v mono" :class="eccClass">{{ eccText }}</span></div>
+          <div class="kv"><span class="k">CUDA 版本</span><span class="v mono">{{ cudaText }}</span></div>
+          <div class="kv"><span class="k">驱动版本</span><span class="v mono">{{ driverText }}</span></div>
         </div>
 
         <div v-if="apps.length" class="apps">
@@ -116,7 +128,51 @@ const clockText = computed(() => {
   return `${c ?? '—'} / ${mc ?? '—'} MHz`
 })
 
+const memUtilText = computed(() => {
+  const u = props.gpu.mem_util_pct
+  return u === null || u === undefined ? '—' : Math.round(u) + '%'
+})
+const tempMem = computed(() => props.gpu.temp_mem_c ?? null)
+const tempMemText = computed(() => (tempMem.value === null ? '—' : Math.round(tempMem.value)))
+const eccText = computed(() => {
+  const c = props.gpu.ecc_corrected
+  const u = props.gpu.ecc_uncorrected
+  if (c === null || c === undefined || u === null || u === undefined) return '—'
+  return `${fmtNum(c)} / ${fmtNum(u)}`
+})
+const eccClass = computed(() => ((props.gpu.ecc_uncorrected || 0) > 0 ? 'lv-danger' : ''))
+
+// clocks_throttle_reasons.active 位掩码 → 中文短名（常见位）
+const THROTTLE_BITS = [
+  [0x1, '硬件降频'], [0x2, '热降频'], [0x4, '功耗墙'], [0x8, '热降频'],
+  [0x10, '热降频'], [0x20, '功率刹车'], [0x40, '热降频'], [0x80, 'SW Fast Switch'],
+  [0x100, '热功率刹车'], [0x200, 'SW FLIP'], [0x400, 'HW FLIP'], [0x800, '热功率刹车'],
+  [0x1000, '功率刹车']
+]
+const throttleNames = computed(() => {
+  const t = props.gpu.throttle
+  if (t === null || t === undefined) return null
+  if (t === 0) return []
+  const names = []
+  for (const [bit, name] of THROTTLE_BITS) if (t & bit) names.push(name)
+  return names
+})
+const throttleText = computed(() => {
+  const names = throttleNames.value
+  if (names === null) return '—'
+  if (!names.length) return '正常'
+  return [...new Set(names)].join('、')
+})
+const throttleClass = computed(() => {
+  const names = throttleNames.value
+  if (names === null) return ''
+  return names.length ? 'lv-warn' : ''
+})
+
 const apps = computed(() => props.gpu.apps || [])
+
+const cudaText = computed(() => props.gpu.cuda || '—')
+const driverText = computed(() => props.gpu.driver || '—')
 
 // 卡片级别：取该卡所有告警的最高级别
 const cardLevel = computed(() => {
@@ -132,11 +188,12 @@ const levelClass = computed(() => (cardLevel.value === 'danger' ? 'card-danger' 
 </script>
 
 <style scoped>
-.gpu { padding: 14px 16px; }
-.gpu-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
-.gpu-name { font-size: 13px; font-weight: 600; }
-.gpu-body { display: flex; gap: 18px; align-items: center; }
-.gauge-wrap { position: relative; width: 108px; height: 108px; flex: none; }
+.gpu { padding: 12px 14px; }
+.gpu-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+.gpu-name { font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; }
+.gpu-icon { width: 18px; height: 18px; color: var(--cyan); filter: drop-shadow(0 0 4px rgba(0, 229, 255, 0.5)); flex: none; }
+.gpu-body { display: flex; gap: 14px; align-items: center; }
+.gauge-wrap { position: relative; width: 88px; height: 88px; flex: none; }
 .gauge { width: 100%; height: 100%; }
 .gauge-center {
   position: absolute;
@@ -146,12 +203,14 @@ const levelClass = computed(() => (cardLevel.value === 'danger' ? 'card-danger' 
   align-items: center;
   justify-content: center;
 }
-.gauge-center .val { font-size: 22px; font-weight: 700; color: var(--text); }
+.gauge-center .val { font-size: 18px; font-weight: 700; color: var(--text); }
 .gauge-center .unit { font-size: 10px; color: var(--text-faint); }
-.gpu-metrics { flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.gpu-metrics { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .mem-label { display: flex; gap: 8px; margin-bottom: 4px; }
 .mem-label span:last-child { margin-left: auto; font-weight: 700; }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 14px; }
+.grid3 .kv { padding: 1px 0; font-size: 11px; }
+.lv-green { color: var(--green); }
 .apps { border-top: 1px solid rgba(143, 163, 200, 0.1); padding-top: 6px; }
 .apps-title { margin-bottom: 2px; }
 </style>

@@ -7,6 +7,7 @@
 """
 import asyncio
 import logging
+import re
 import time
 from typing import Optional, Dict, Any, List
 
@@ -24,7 +25,9 @@ log = logging.getLogger("llamalens.sshpoller")
 
 BATCH_CMD = r"""
 echo ==GPU==
-nvidia-smi --query-gpu=index,name,driver_version,memory.total,memory.used,memory.free,utilization.gpu,utilization.memory,temperature.gpu,power.draw,power.limit,fan.speed,clocks.current.graphics,clocks.current.memory,pcie.link.gen.current,pcie.link.width.current,pstate --format=csv,noheader,nounits 2>/dev/null
+nvidia-smi --query-gpu=index,name,driver_version,memory.total,memory.used,memory.free,utilization.gpu,utilization.memory,temperature.gpu,power.draw,power.limit,fan.speed,clocks.current.graphics,clocks.current.memory,pcie.link.gen.current,pcie.link.width.current,pstate,temperature.memory,ecc.errors.corrected.volatile.total,ecc.errors.uncorrected.volatile.total,clocks_throttle_reasons.active --format=csv,noheader,nounits 2>/dev/null
+echo ==SMI==
+nvidia-smi 2>/dev/null | sed -n 3p
 echo ==APPS==
 nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader,nounits 2>/dev/null
 echo ==STAT==
@@ -121,6 +124,30 @@ def split_sections(output: str) -> Dict[str, str]:
     return sections
 
 
+def _parse_throttle(raw) -> int:
+    """clocks_throttle_reasons.active：'Not Active'/十进制/0x 十六进制 → 位掩码 int（0=无降频）。"""
+    s = (raw or "").strip()
+    if not s or s.upper().startswith("NOT"):
+        return 0
+    try:
+        return int(s, 16) if s.lower().startswith("0x") else int(s)
+    except ValueError:
+        return 0
+
+
+RE_SMI_CUDA = re.compile(r"CUDA Version:?\s*(\d+\.\d+)")
+
+
+def parse_smi_cuda(section: str) -> Optional[str]:
+    """nvidia-smi 表头行（第 3 行）→ CUDA 版本（如 '13.0'），无匹配 None。
+
+    cuda_version 查询字段部分驱动不支持（580.x 报 not a valid field，整条查询失败），
+    改从表头行解析。
+    """
+    m = RE_SMI_CUDA.search(section or "")
+    return m.group(1) if m else None
+
+
 def parse_gpu(section: str) -> List[Dict[str, Any]]:
     gpus = []
     for line in section.splitlines():
@@ -128,7 +155,7 @@ def parse_gpu(section: str) -> List[Dict[str, Any]]:
         if not line:
             continue
         parts = [p.strip() for p in line.split(",")]
-        if len(parts) < 17:
+        if len(parts) < 21:
             continue
         fan = _f(parts[11])
         gpus.append({
@@ -149,6 +176,10 @@ def parse_gpu(section: str) -> List[Dict[str, Any]]:
             "pcie_gen": _i(parts[14]),
             "pcie_width": _i(parts[15]),
             "pstate": parts[16],
+            "temp_mem_c": _f(parts[17]),
+            "ecc_corrected": _i(parts[18]),
+            "ecc_uncorrected": _i(parts[19]),
+            "throttle": _parse_throttle(parts[20]),
             "apps": [],
         })
     return gpus
@@ -518,8 +549,10 @@ class SshPoller:
         # GPU + APPS
         gpus = parse_gpu(sec.get("GPU", ""))
         apps = parse_apps(sec.get("APPS", ""))
+        cuda_ver = parse_smi_cuda(sec.get("SMI", ""))
         for g in gpus:
             g["apps"] = apps
+            g["cuda"] = cuda_ver
         m["gpus"] = gpus
 
         # CPU（整机 + 每核差分）
@@ -608,6 +641,9 @@ class SshPoller:
         net = m.get("net", {})
         proc = m.get("process", {})
         self.ring.push("cpu", ts, cpu.get("usage_pct"))
+        load = cpu.get("load") or []
+        for i, name in enumerate(("load_1", "load_5", "load_15")):
+            self.ring.push(name, ts, load[i] if i < len(load) else None)
         self.ring.push("mem_used", ts, mem.get("used_mb"))
         self.ring.push("mem_buff_cache", ts, mem.get("buff_cache_mb"))
         self.ring.push("swap_used", ts, mem.get("swap_used_mb"))

@@ -18,7 +18,7 @@
         <span class="unit">tok/s</span>
       </div>
       <svg v-if="sparkD" class="spark" :viewBox="`0 0 ${sparkW} ${sparkH}`" preserveAspectRatio="none">
-        <path :d="sparkD" fill="none" :stroke="sparkColor" stroke-width="1.5" />
+        <path :d="sparkD" fill="none" :stroke="sparkColor" stroke-width="1.5" vector-effect="non-scaling-stroke" />
       </svg>
     </div>
 

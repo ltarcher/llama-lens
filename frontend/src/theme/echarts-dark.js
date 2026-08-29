@@ -66,3 +66,85 @@ export function lineSeries(name, data, color, opts = {}) {
 export function initChart(el) {
   return echarts.init(el, null, { renderer: 'canvas' })
 }
+
+export function gaugeOption(value, color, zones) {
+  const has = value !== null && value !== undefined && Number.isFinite(value)
+  const v = has ? Math.max(0, Math.min(100, value)) : 0
+  const zoneColors = zones || [
+    [0.8, 'rgba(0,229,255,0.10)'],
+    [0.9, 'rgba(255,197,61,0.16)'],
+    [1, 'rgba(255,59,92,0.18)']
+  ]
+  return {
+    backgroundColor: 'transparent',
+    animation: true,
+    animationDuration: 300,
+    animationDurationUpdate: 300,
+    animationEasingUpdate: 'cubicOut',
+    series: [
+      {
+        type: 'gauge',
+        min: 0,
+        max: 100,
+        startAngle: 210,
+        endAngle: -30,
+        radius: '80%',
+        center: ['50%', '58%'],
+        splitNumber: 4,
+        axisLine: {
+          lineStyle: {
+            width: 12,
+            color: zoneColors
+          }
+        },
+        pointer: {
+          length: '58%',
+          width: 3,
+          itemStyle: {
+            color,
+            shadowBlur: 6,
+            shadowColor: `${color}88`
+          }
+        },
+        anchor: {
+          show: true,
+          size: 8,
+          itemStyle: { color: '#0d1526', borderColor: color, borderWidth: 2 }
+        },
+        progress: {
+          show: true,
+          width: 12,
+          roundCap: true,
+          itemStyle: {
+            color,
+            shadowBlur: 10,
+            shadowColor: `${color}55`
+          }
+        },
+        axisTick: {
+          show: true,
+          splitNumber: 5,
+          distance: -14,
+          length: 3,
+          lineStyle: { color: 'rgba(143,163,200,0.28)', width: 1 }
+        },
+        splitLine: {
+          show: true,
+          distance: -15,
+          length: 7,
+          lineStyle: { color: 'rgba(143,163,200,0.5)', width: 1 }
+        },
+        axisLabel: {
+          show: true,
+          distance: 10,
+          color: '#5a6b8c',
+          fontSize: 9,
+          fontFamily: 'JetBrains Mono, Roboto Mono, monospace'
+        },
+        title: { show: false },
+        detail: { show: false },
+        data: [{ value: Math.round(v * 10) / 10 }]
+      }
+    ]
+  }
+}

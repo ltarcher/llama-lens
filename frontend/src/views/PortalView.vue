@@ -25,10 +25,8 @@ const { hosts, connected } = usePortalStream()
 <style scoped>
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(360px, 100%), 1fr));
   gap: 16px;
   padding: 20px 24px;
-  max-width: 1720px;
-  margin: 0 auto;
 }
 </style>

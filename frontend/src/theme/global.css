@@ -25,7 +25,6 @@ body {
   color: var(--text);
   font-family: system-ui, 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-size: 13px;
-  min-width: 1200px;
   overflow-x: auto;
 }
 

@@ -9,6 +9,13 @@ llama.cpp llama-server 多主机实时监控面板。
 - **9 套主题**：Aurora / Terminal / Light / Monokai / Nord / Dracula / Synthwave '84 / Tokyo Night / Matrix
 - **部署**：原生单进程或 Docker 镜像，二选一
 
+![alt text](docs/image0.png)
+
+![alt text](docs/image.png)
+
+![alt text](docs/image-1.png)
+
+![alt text](docs/image-2.png)
 ## 当前状态
 
 ✅ **v1.0.0**（2026-08-29）—— 首个发布版本。后端（FastAPI + SSH/HTTP 采集 + WS 推送）与前端（Vue 3 + ECharts）均已完成，

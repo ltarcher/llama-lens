@@ -82,7 +82,6 @@ cp .env.example .env
 |---|---|---|
 | `AI_SSH_PASS` | 是（示例名） | SSH 密码，在 hosts.yaml 中以 `${AI_SSH_PASS}` 引用。变量名可任意，与 hosts.yaml 中的引用一致即可 |
 | `PORT` | 否 | 面板端口，默认 8000 |
-| `LLAMALENS_CODEX_PROXY` | 否 | `=1` 启用 Codex CLI 规范化代理（devtools，仅开发环境需要） |
 
 `.env` 与 `config/hosts.yaml` 含敏感信息，已被 `.gitignore` 排除，勿提交。
 

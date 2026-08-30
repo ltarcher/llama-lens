@@ -98,11 +98,16 @@ class LlamaPoller:
         last_slow = 0.0
         try:
             while not self._stopped:
-                now = time.time()
-                await self._poll_fast(now)
-                if now - last_slow >= self.cfg.llama.slow_interval:
-                    last_slow = now
-                    await self._poll_slow(now)
+                try:
+                    now = time.time()
+                    await self._poll_fast(now)
+                    if now - last_slow >= self.cfg.llama.slow_interval:
+                        last_slow = now
+                        await self._poll_slow(now)
+                except Exception:
+                    # 单周期异常（如 /slots 返回畸形数据）不能杀死整个 poller 任务，
+                    # 否则该主机的 llama 采集将永久停止且无重启机制（同 SshPoller/LogPoller）
+                    log.exception("[%s] llama 采集周期异常", self.cfg.id)
                 await asyncio.sleep(self.cfg.llama.interval)
         finally:
             await self._client.aclose()

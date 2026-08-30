@@ -240,7 +240,12 @@ class EventDetector:
         for metric, (level, last_emit) in list(self._alert_levels.items()):
             if level == "normal" or metric in current:
                 continue
-            if last_emit is not None and now - last_emit < self.ALERT_COOLDOWN_S:
+            if last_emit is None:
+                # 基线状态（首次观测只记基线、从未发过告警事件）：静默转 normal，
+                # 不发"恢复正常"，否则会出现没有对应告警的孤立恢复事件
+                self._alert_levels[metric] = ("normal", None)
+                continue
+            if now - last_emit < self.ALERT_COOLDOWN_S:
                 self._alert_levels[metric] = (level, last_emit)
                 continue
             self.emit(now, "info", "alert", "%s 恢复正常" % self._alert_name(metric))

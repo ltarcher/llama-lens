@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- 背景：暗色圆角方块（呼应终端主题） -->
+  <rect width="64" height="64" rx="14" fill="#0e0e10"/>
+  <!-- 羊驼头（简化剪影） -->
+  <path d="M24 50 L24 32 Q24 24 32 24 Q40 24 40 32 L40 50 Q40 54 36 54 L28 54 Q24 54 24 50 Z" fill="#98c379"/>
+  <!-- 左耳 -->
+  <path d="M28 25 L25 15 L32 20 Z" fill="#98c379"/>
+  <!-- 右耳 -->
+  <path d="M36 25 L39 15 L32 20 Z" fill="#98c379"/>
+  <!-- 镜头（Lens）：外圈 + 镜片 + 高光 -->
+  <circle cx="32" cy="38" r="9" fill="none" stroke="#56b6c2" stroke-width="2.5"/>
+  <circle cx="32" cy="38" r="4.5" fill="#56b6c2"/>
+  <circle cx="34.5" cy="35.5" r="1.6" fill="#ffffff"/>
+</svg>

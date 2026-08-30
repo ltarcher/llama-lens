@@ -164,6 +164,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { api } from '../api'
 import { useHostStream } from '../stream'
+import { totalSpeed as globalSpeed } from '../speed'
 import { fmtNum, fmtClock, fmtTokens, fmtDuration, alertLevel } from '../utils'
 import { chartTheme } from '../theme'
 import TopBar from '../components/TopBar.vue'
@@ -196,6 +197,12 @@ const events = computed(() => (snap.value ? snap.value.events : []))
 
 const llamaOnline = computed(() => !!(snap.value && snap.value.llama.online))
 const sshOk = computed(() => !!(snap.value && snap.value.host_metrics.reachable))
+
+// 当前主机生成速度同步到全局：浏览器标签页标题（App.vue）与 Terminal 窗口标题栏
+// （TerminalFrame.vue）据此展示，使详情页也能看到速度（BrandBar 只覆盖门户页）。
+// snap 未就绪时为 null，不写入，避免切换视图瞬间标题闪回 0。
+const hostSpeed = computed(() => (snap.value ? (llama.value.gen_speed_tps || 0) : null))
+watch(hostSpeed, (v) => { if (v !== null) globalSpeed.value = v }, { immediate: true })
 const model = computed(() => llama.value.model || {})
 const modelName = computed(() => (model.value.name || model.value.path || '').split('/').pop())
 const modelTitle = computed(() => model.value.name || model.value.path || '')

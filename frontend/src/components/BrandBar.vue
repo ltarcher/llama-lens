@@ -20,9 +20,10 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import LiveClock from './LiveClock.vue'
 import ThemeSwitcher from './ThemeSwitcher.vue'
+import { totalSpeed as globalSpeed } from '../speed'
 
 const props = defineProps({
   hosts: { type: Array, default: () => [] },
@@ -32,6 +33,10 @@ const props = defineProps({
 const hostsTotal = computed(() => props.hosts.length)
 const onlineCount = computed(() => props.hosts.filter((h) => h.online).length)
 const totalSpeed = computed(() => props.hosts.reduce((s, h) => s + (h.gen_speed_tps || 0), 0))
+
+// 门户级聚合速度同步到全局：浏览器标签页标题（App.vue）与
+// Terminal 窗口标题栏（TerminalFrame.vue）据此展示，任意视图均可见
+watch(totalSpeed, (v) => { globalSpeed.value = v }, { immediate: true })
 </script>
 
 <style scoped>

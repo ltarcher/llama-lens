@@ -8,7 +8,9 @@
           <span class="tl yellow"><em>−</em></span>
           <span class="tl green"><em>+</em></span>
         </div>
-        <div class="ttitle">{{ title }}</div>
+        <div class="ttitle">
+          <span>{{ titleBase }}</span><span v-if="totalSpeed > 0" class="tspeed"> · ⚡ {{ totalSpeed.toFixed(1) }} tok/s</span>
+        </div>
       </div>
       <!-- 会话首行：提示符 + 命令（命令已执行，光标不在此处） -->
       <div class="tprompt">
@@ -36,6 +38,7 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { themeState } from '../theme'
+import { totalSpeed } from '../speed'
 
 const route = useRoute()
 const term = computed(() => themeState.id === 'terminal')
@@ -49,7 +52,8 @@ const cmd = computed(() =>
 
 const isPortal = computed(() => route.path === '/')
 // 标题栏：门户回到 user@host:~；详情页显示运行中的 watch 命令（macOS 终端行为）
-const title = computed(() =>
+// 有生成速度时追加 ⚡ X tok/s（ANSI 绿），让“标题”直接可见实时速度
+const titleBase = computed(() =>
   isPortal.value
     ? 'user@llamalens: ~'
     : `llamalens watch --host ${route.params.id || ''} --interval 1s`
@@ -113,6 +117,7 @@ onBeforeUnmount(() => {
 .tl.yellow { background: #febc2e; box-shadow: inset 0 0 0 0.5px #d89e24; }
 .tl.green { background: #28c840; box-shadow: inset 0 0 0 0.5px #1eae31; }
 .ttitle { text-align: center; color: #787880; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 12px; }
+.ttitle .tspeed { color: #98c379; font-weight: 700; }
 
 /* ---------------- 提示符行 ---------------- */
 .tprompt {

@@ -23,10 +23,25 @@ html[data-theme='matrix'] {
 
 /* 辉光同步 Matrix 绿 */
 html[data-theme='matrix'] .glass-hover:hover { box-shadow: 0 0 12px rgba(0, 255, 65, 0.22); }
-html[data-theme='matrix'] .bar > i { box-shadow: 0 0 6px rgba(0, 255, 65, 0.5); }
-html[data-theme='matrix'] .bar > i.warn { box-shadow: 0 0 6px rgba(170, 255, 0, 0.5); }
-html[data-theme='matrix'] .bar > i.danger { box-shadow: 0 0 6px rgba(255, 0, 60, 0.5); }
-html[data-theme='matrix'] .bar > i.green { box-shadow: 0 0 6px rgba(0, 255, 65, 0.5); }
+/* 进度条：块状分段·纯色（一节一节，终端 ████░░░░ 风）；纯色 + mask 消除渐变横跳 */
+html[data-theme='matrix'] .bar > i {
+  background: var(--green);
+  box-shadow: none;
+  -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 8px, transparent 8px 10px);
+  mask-image: repeating-linear-gradient(90deg, #000 0 8px, transparent 8px 10px);
+}
+html[data-theme='matrix'] .bar > i.warn { background: var(--amber); }
+html[data-theme='matrix'] .bar > i.danger { background: var(--red); }
+html[data-theme='matrix'] .bar > i.green { background: var(--green); }
+/* 内存堆叠条 / CPU 核条 同样分节 */
+html[data-theme='matrix'] .stack-bar i {
+  -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 8px, transparent 8px 10px);
+  mask-image: repeating-linear-gradient(90deg, #000 0 8px, transparent 8px 10px);
+}
+html[data-theme='matrix'] .core-bar i {
+  -webkit-mask-image: repeating-linear-gradient(0deg, #000 0 8px, transparent 8px 10px);
+  mask-image: repeating-linear-gradient(0deg, #000 0 8px, transparent 8px 10px);
+}
 
 /* 品牌名渐变 → Matrix 绿/荧光黄绿 */
 html[data-theme='matrix'] .brandbar .name {

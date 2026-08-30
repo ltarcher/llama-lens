@@ -16,7 +16,6 @@ from fastapi.responses import FileResponse
 from .api import router as api_router
 from .config import load_config
 from .monitor import MonitorRegistry
-from .proxy_supervisor import DEFAULT_LISTEN, DEFAULT_UPSTREAM, ProxySupervisor
 from .ws import router as ws_router
 
 log = logging.getLogger("llamalens.main")
@@ -52,22 +51,15 @@ def create_app(base_dir: Optional[str] = None) -> FastAPI:
         app_cfg = AppConfig(global_cfg=GlobalConfig(), hosts=[])
 
     registry = MonitorRegistry(app_cfg)
-    proxy_supervisor = ProxySupervisor(
-        base_dir,
-        os.environ.get("LLAMALENS_PROXY_LISTEN", DEFAULT_LISTEN),
-        os.environ.get("LLAMALENS_PROXY_UPSTREAM", DEFAULT_UPSTREAM),
-    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         log.info("LlamaLens 启动：端口 %d，主机 %s", app_cfg.port,
                  [h.id for h in app_cfg.hosts] or "(无)")
         await registry.start()
-        await proxy_supervisor.start()
         try:
             yield
         finally:
-            await proxy_supervisor.stop()
             await registry.stop()
             log.info("LlamaLens 已停止")
 

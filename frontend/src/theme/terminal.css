@@ -23,8 +23,13 @@ html[data-theme='terminal'] {
   --chrome-top: 38px;
   --term-titlebar: #18181c;
   --term-line: #242428;
+  --term-dash: repeating-linear-gradient(90deg, var(--term-line) 0 6px, transparent 6px 9px);
   --term-inset: #0a0a0c;
   --term-track: #1c1c20;
+  /* 进度条分节填充色：介于全局 --green/--amber/--red 与淡色之间（按用户反馈再压暗一档） */
+  --bar-green: #a8c890;
+  --bar-amber: #e8d090;
+  --bar-red: #e07d85;
 }
 
 /* ---------------- 全局：等宽字体 + 纯黑背景 + 扫描线 ---------------- */
@@ -100,23 +105,22 @@ html[data-theme='terminal'] .badge { border-radius: 0; padding: 2px 7px; }
 html[data-theme='terminal'] .badge::before { content: '['; opacity: 0.7; }
 html[data-theme='terminal'] .badge::after { content: ']'; opacity: 0.7; }
 
-/* ---------------- 进度条：htop 式分块条（█ 块 + 1px 间隙） ---------------- */
+/* ---------------- 进度条：块状分段·纯色（一节一节，终端 ████░░░░ 风） ---------------- */
 html[data-theme='terminal'] .bar {
   background: var(--term-track);
   border-radius: 0;
 }
+/* 填充按阈值取淡色 + mask 切成 8px 块 + 2px 缝；纯色彻底消除渐变横跳 */
 html[data-theme='terminal'] .bar > i {
   border-radius: 0;
   box-shadow: none;
+  background: var(--bar-green);
+  -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 8px, transparent 8px 10px);
+  mask-image: repeating-linear-gradient(90deg, #000 0 8px, transparent 8px 10px);
 }
-/* htop 式渐变条：绿→黄→红 固定铺满整条，填充宽度揭示渐变（进度条 .green 保持纯绿） */
-html[data-theme='terminal'] .bar > i,
-html[data-theme='terminal'] .bar > i.warn,
-html[data-theme='terminal'] .bar > i.danger {
-  background: linear-gradient(90deg, #98c379 0%, #e5c07b 55%, #e06c75 100%);
-  background-size: calc(100% / (var(--pct) / 100)) 100%;
-  background-repeat: no-repeat;
-}
+html[data-theme='terminal'] .bar > i.warn { background: var(--bar-amber); }
+html[data-theme='terminal'] .bar > i.danger { background: var(--bar-red); }
+html[data-theme='terminal'] .bar > i.green { background: var(--bar-green); }
 
 /* ---------------- 区块标题：── 终端分隔线式 ---------------- */
 html[data-theme='terminal'] .section-title {
@@ -139,7 +143,7 @@ html[data-theme='terminal'] .section-title::after {
   content: '';
   flex: 1;
   height: 1px;
-  background: var(--term-line);
+  background: var(--term-dash);
 }
 
 /* ---------------- 收紧间距：更接近终端输出的密度 ---------------- */
@@ -148,8 +152,12 @@ html[data-theme='terminal'] .grid { gap: 12px; padding: 14px 24px; }
 
 /* ---------------- 表格 ---------------- */
 html[data-theme='terminal'] .tbl th {
-  border-bottom-color: var(--term-line);
-  background: rgba(120, 120, 128, 0.12);
+  border-bottom: none;
+  background-color: rgba(120, 120, 128, 0.12);
+  background-image: var(--term-dash);
+  background-size: 100% 1px;
+  background-position: left bottom;
+  background-repeat: no-repeat;
   color: var(--text-dim);
   font-weight: 600;
 }
@@ -173,10 +181,14 @@ html[data-theme='terminal'] .paused-watermark span { color: rgba(139, 144, 156, 
 /* ---------------- 顶栏（BrandBar / TopBar）：扁平终端标题条（实底，滚动内容不透出） ---------------- */
 html[data-theme='terminal'] .brandbar,
 html[data-theme='terminal'] .topbar {
-  background: var(--bg);
+  background-color: var(--bg);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-  border-bottom-color: var(--term-line);
+  border-bottom: none;
+  background-image: var(--term-dash);
+  background-size: 100% 1px;
+  background-position: left bottom;
+  background-repeat: no-repeat;
 }
 html[data-theme='terminal'] .brandbar .stat,
 html[data-theme='terminal'] .topbar .stat {
@@ -222,16 +234,31 @@ html[data-theme='terminal'] .alert-badge { border-radius: 0; box-shadow: none; }
 html[data-theme='terminal'] .gpu-icon { filter: none; }
 html[data-theme='terminal'] .gauge circle:first-of-type { stroke: var(--term-line); }
 html[data-theme='terminal'] .gauge circle:nth-of-type(2) { filter: none !important; }
-html[data-theme='terminal'] .apps { border-top-color: var(--term-line); }
+html[data-theme='terminal'] .apps {
+  border-top: none;
+  background-image: var(--term-dash);
+  background-size: 100% 1px;
+  background-position: left top;
+  background-repeat: no-repeat;
+}
 
-/* ---------------- CpuPanel：htop 式核条 ---------------- */
+/* ---------------- CpuPanel：htop 式核条（垂直分节） ---------------- */
 html[data-theme='terminal'] .core-bar { background: var(--term-track); border-radius: 0; }
-html[data-theme='terminal'] .core-bar i { border-radius: 0; box-shadow: none; }
+html[data-theme='terminal'] .core-bar i {
+  border-radius: 0;
+  box-shadow: none;
+  -webkit-mask-image: repeating-linear-gradient(0deg, #000 0 8px, transparent 8px 10px);
+  mask-image: repeating-linear-gradient(0deg, #000 0 8px, transparent 8px 10px);
+}
 html[data-theme='terminal'] .core-bar i.warn { box-shadow: none; }
 html[data-theme='terminal'] .core-bar i.danger { box-shadow: none; }
 
 /* ---------------- MemPanel ---------------- */
 html[data-theme='terminal'] .stack-bar { background: var(--term-track); border-radius: 0; }
+html[data-theme='terminal'] .stack-bar i {
+  -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 8px, transparent 8px 10px);
+  mask-image: repeating-linear-gradient(90deg, #000 0 8px, transparent 8px 10px);
+}
 html[data-theme='terminal'] .stack-bar .used { box-shadow: none; }
 html[data-theme='terminal'] .legend .sw { border-radius: 0; }
 html[data-theme='terminal'] .legend .sw.free { background: rgba(120, 120, 128, 0.25); }
@@ -252,7 +279,13 @@ html[data-theme='terminal'] .stat3 .stat {
 }
 html[data-theme='terminal'] .s-val.cyan { text-shadow: none; }
 html[data-theme='terminal'] .s-val.green { text-shadow: none; }
-html[data-theme='terminal'] .cfg-strip { border-top-color: var(--term-line); }
+html[data-theme='terminal'] .cfg-strip {
+  border-top: none;
+  background-image: var(--term-dash);
+  background-size: 100% 1px;
+  background-position: left top;
+  background-repeat: no-repeat;
+}
 
 /* ---------------- BarCard / GaugeCard 大数字辉光 ---------------- */
 html[data-theme='terminal'] .lv-danger .num { text-shadow: none; }
@@ -261,7 +294,13 @@ html[data-theme='terminal'] .lv-danger .val { text-shadow: none; }
 html[data-theme='terminal'] .lv-warn .val { text-shadow: none; }
 
 /* ---------------- EventFeed：内嵌终端子窗格 ---------------- */
-html[data-theme='terminal'] .feed-head { border-bottom-color: var(--term-line); }
+html[data-theme='terminal'] .feed-head {
+  border-bottom: none;
+  background-image: var(--term-dash);
+  background-size: 100% 1px;
+  background-position: left bottom;
+  background-repeat: no-repeat;
+}
 html[data-theme='terminal'] .feed-box {
   background: var(--term-inset);
   border-radius: 0;
@@ -275,7 +314,13 @@ html[data-theme='terminal'] .new-btn {
 html[data-theme='terminal'] .new-btn:hover { background: rgba(152, 195, 121, 0.2); }
 
 /* ---------------- LlamaProcessCard ---------------- */
-html[data-theme='terminal'] .service { border-top-color: var(--term-line); }
+html[data-theme='terminal'] .service {
+  border-top: none;
+  background-image: var(--term-dash);
+  background-size: 100% 1px;
+  background-position: left top;
+  background-repeat: no-repeat;
+}
 html[data-theme='terminal'] .cmdline {
   background: var(--term-inset);
   border-radius: 0;
@@ -295,5 +340,11 @@ html[data-theme='terminal'] .win-switch button.on {
   border-color: rgba(152, 195, 121, 0.5);
   background: rgba(152, 195, 121, 0.08);
 }
-html[data-theme='terminal'] .trend-group { border-bottom-color: var(--term-line); }
+html[data-theme='terminal'] .trend-group {
+  border-bottom: none;
+  background-image: var(--term-dash);
+  background-size: 100% 1px;
+  background-position: left bottom;
+  background-repeat: no-repeat;
+}
 html[data-theme='terminal'] .trend-group::before { content: '# '; color: var(--text-faint); }

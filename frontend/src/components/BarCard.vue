@@ -9,7 +9,7 @@
       <span class="mono num" :class="levelClass">{{ text }}</span>
       <span v-if="unit" class="unit">{{ unit }}</span>
     </div>
-    <div class="bar"><i :class="barClass" :style="{ width: barPct + '%' }"></i></div>
+    <div class="bar"><i :class="barClass" :style="{ width: barPct + '%', '--pct': barPct }"></i></div>
     <div class="barcard-scale mono">
       <span>0</span>
       <span>{{ midText }}</span>
@@ -25,6 +25,7 @@
 <script setup>
 import { computed } from 'vue'
 import { sparkPath, useCountUp, fmtNum, niceMax } from '../utils'
+import { chartTheme } from '../theme'
 
 const props = defineProps({
   title: { type: String, required: true },
@@ -83,10 +84,11 @@ const sparkW = 150
 const sparkH = 20
 const sparkD = computed(() => sparkPath(props.spark || [], sparkW, sparkH))
 const sparkColor = computed(() => {
-  if (props.value === null || props.value === undefined) return '#5a6b8c'
-  if (props.level === 'danger') return '#ff3b5c'
-  if (props.level === 'warn') return '#ffc53d'
-  return '#00e5ff'
+  const t = chartTheme()
+  if (props.value === null || props.value === undefined) return t.faint
+  if (props.level === 'danger') return t.red
+  if (props.level === 'warn') return t.amber
+  return t.cyan
 })
 
 const statsText = computed(() => {

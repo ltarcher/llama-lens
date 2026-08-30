@@ -13,6 +13,7 @@
   --text-faint: #5a6b8c;
   --grid-line: rgba(0, 229, 255, 0.04);
   --chart-grid: rgba(143, 163, 200, 0.12);
+  --chrome-top: 0px; /* 终端主题窗口标题栏高度，其余主题无 */
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -129,12 +130,14 @@ a:hover { text-decoration: underline; }
   display: block;
   height: 100%;
   border-radius: 3px;
-  background: var(--cyan);
+  background: linear-gradient(90deg, var(--green) 0%, var(--amber) 55%, var(--red) 100%);
+  background-size: calc(100% / (var(--pct) / 100)) 100%;
+  background-repeat: no-repeat;
   transition: width 0.3s ease;
   box-shadow: 0 0 6px rgba(0, 229, 255, 0.5);
 }
-.bar > i.warn { background: var(--amber); box-shadow: 0 0 6px rgba(255, 197, 61, 0.5); }
-.bar > i.danger { background: var(--red); box-shadow: 0 0 6px rgba(255, 59, 92, 0.5); }
+.bar > i.warn { box-shadow: 0 0 6px rgba(255, 197, 61, 0.5); }
+.bar > i.danger { box-shadow: 0 0 6px rgba(255, 59, 92, 0.5); }
 .bar > i.green { background: var(--green); box-shadow: 0 0 6px rgba(0, 255, 157, 0.5); }
 
 /* ---------------- 通用布局 ---------------- */

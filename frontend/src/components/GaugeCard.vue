@@ -21,6 +21,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { gaugeOption, initChart } from '../theme/echarts-dark'
+import { chartTheme, themeState } from '../theme'
 import { sparkPath, useCountUp } from '../utils'
 
 const props = defineProps({
@@ -41,7 +42,8 @@ let chart = null
 let ro = null
 
 const color = computed(() => {
-  if (props.value === null || props.value === undefined) return '#5a6b8c'
+  const t = chartTheme()
+  if (props.value === null || props.value === undefined) return t.faint
   if (props.zoneColors && props.zoneColors.length) {
     const v = props.value / 100
     for (const [frac, c] of props.zoneColors) {
@@ -49,9 +51,9 @@ const color = computed(() => {
     }
     return props.zoneColors[props.zoneColors.length - 1][1]
   }
-  if (props.level === 'danger') return '#ff3b5c'
-  if (props.level === 'warn') return '#ffc53d'
-  return '#00e5ff'
+  if (props.level === 'danger') return t.red
+  if (props.level === 'warn') return t.amber
+  return t.cyan
 })
 
 const animated = useCountUp(computed(() => (typeof props.value === 'number' ? props.value : 0)))
@@ -66,7 +68,7 @@ const levelClass = computed(() => (props.level === 'danger' ? 'lv-danger' : prop
 const sparkW = 150
 const sparkH = 20
 const sparkD = computed(() => sparkPath(props.spark || [], sparkW, sparkH))
-const sparkColor = computed(() => (props.value === null || props.value === undefined ? '#5a6b8c' : color.value))
+const sparkColor = computed(() => (props.value === null || props.value === undefined ? chartTheme().faint : color.value))
 
 const statsText = computed(() => {
   const vals = (props.spark || []).map((p) => p[1]).filter((v) => v !== null && v !== undefined)
@@ -92,6 +94,7 @@ onMounted(async () => {
 })
 
 watch(() => [props.value, props.level], render)
+watch(() => themeState.version, render)
 
 onBeforeUnmount(() => {
   if (ro) ro.disconnect()

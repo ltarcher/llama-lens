@@ -1,0 +1,43 @@
+/* =====================================================================
+   Dracula 主题（参考 VSCode Dracula，标志性霓虹紫/青/粉，炫酷）
+   深色玻璃拟态 + 高饱和霓虹色；辉光同步 Dracula 紫/青
+   所有规则以 html[data-theme='dracula'] 为前缀
+   ===================================================================== */
+
+html[data-theme='dracula'] {
+  --bg: #282a36;
+  --bg-grad: #21222c;
+  --card-bg: rgba(40, 42, 54, 0.72);
+  --card-border: rgba(189, 147, 249, 0.18);
+  --card-border-hover: rgba(189, 147, 249, 0.44);
+  --cyan: #8be9fd;
+  --green: #50fa7b;
+  --amber: #f1fa8c;
+  --red: #ff5555;
+  --text: #f8f8f2;
+  --text-dim: #9ca0c0;
+  --text-faint: #6272a4;
+  --grid-line: rgba(189, 147, 249, 0.05);
+  --chart-grid: rgba(156, 160, 192, 0.14);
+}
+
+/* 辉光同步 Dracula 色 */
+html[data-theme='dracula'] .glass-hover:hover { box-shadow: 0 0 12px rgba(189, 147, 249, 0.22); }
+html[data-theme='dracula'] .bar > i { box-shadow: 0 0 6px rgba(139, 233, 253, 0.5); }
+html[data-theme='dracula'] .bar > i.warn { box-shadow: 0 0 6px rgba(241, 250, 140, 0.5); }
+html[data-theme='dracula'] .bar > i.danger { box-shadow: 0 0 6px rgba(255, 85, 85, 0.5); }
+html[data-theme='dracula'] .bar > i.green { box-shadow: 0 0 6px rgba(80, 250, 123, 0.5); }
+
+/* 品牌名渐变 → Dracula 紫/青 */
+html[data-theme='dracula'] .brandbar .name {
+  background: linear-gradient(90deg, #bd93f9, #8be9fd);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+html[data-theme='dracula'] .brandbar .logo { color: #bd93f9; }
+
+/* 选区 / 滚动条 */
+html[data-theme='dracula'] ::selection { background: rgba(189, 147, 249, 0.32); color: #f8f8f2; }
+html[data-theme='dracula'] ::-webkit-scrollbar-thumb { background: rgba(98, 114, 164, 0.4); }
+html[data-theme='dracula'] ::-webkit-scrollbar-thumb:hover { background: rgba(139, 233, 253, 0.5); }

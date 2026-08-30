@@ -4,7 +4,19 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LlamaLens · llama-server 实时监控</title>
-  <style>html { background: #0a0e17; }</style>
+  <script>
+    // 首帧前应用持久化主题，避免主题闪烁（FOUC）
+    (function () {
+      try {
+        var t = localStorage.getItem('llamalens.theme')
+        var ok = ['aurora', 'terminal', 'light', 'monokai', 'nord', 'dracula', 'synthwave', 'tokyonight', 'matrix']
+        if (ok.indexOf(t) !== -1) {
+          document.documentElement.setAttribute('data-theme', t)
+        }
+      } catch (e) {}
+    })()
+  </script>
+  <style>html { background: #0a0e17; } html[data-theme='terminal'] { background: #0e0e10; } html[data-theme='light'] { background: #f6f8fa; } html[data-theme='monokai'] { background: #272822; } html[data-theme='nord'] { background: #2e3440; } html[data-theme='dracula'] { background: #282a36; } html[data-theme='synthwave'] { background: #262335; } html[data-theme='tokyonight'] { background: #1a1b26; } html[data-theme='matrix'] { background: #050805; }</style>
 </head>
 <body>
   <div id="app"></div>

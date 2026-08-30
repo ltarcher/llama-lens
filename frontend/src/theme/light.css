@@ -1,0 +1,82 @@
+/* =====================================================================
+   Light 浅色主题（参考 VSCode Light+ / GitHub Light）
+   扁平、干净、专业：实底白卡 + 柔和阴影，无玻璃拟态、无霓虹辉光
+   所有规则以 html[data-theme='light'] 为前缀
+   ===================================================================== */
+
+html[data-theme='light'] {
+  --bg: #f6f8fa;
+  --bg-grad: #ffffff;
+  --card-bg: #ffffff;
+  --card-border: #d0d7de;
+  --card-border-hover: #8c959f;
+  --cyan: #0969da;
+  --green: #1a7f37;
+  --amber: #9a6700;
+  --red: #cf222e;
+  --text: #24292f;
+  --text-dim: #57606a;
+  --text-faint: #8c959f;
+  --grid-line: rgba(9, 105, 218, 0.05);
+  --chart-grid: rgba(87, 96, 106, 0.16);
+}
+
+/* 浅色：去玻璃拟态，实底卡片 + 柔和投影 */
+html[data-theme='light'] .glass {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: 0 1px 2px rgba(31, 35, 40, 0.06), 0 1px 3px rgba(31, 35, 40, 0.08);
+}
+html[data-theme='light'] .glass-hover:hover {
+  border-color: var(--card-border-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(31, 35, 40, 0.12);
+}
+
+/* 去霓虹辉光（浅色下辉光显脏） */
+html[data-theme='light'] .bar > i,
+html[data-theme='light'] .bar > i.warn,
+html[data-theme='light'] .bar > i.danger,
+html[data-theme='light'] .bar > i.green { box-shadow: none; }
+html[data-theme='light'] .dot.online,
+html[data-theme='light'] .dot.offline,
+html[data-theme='light'] .dot.warn { box-shadow: none; }
+html[data-theme='light'] .card-danger { animation: none; }
+html[data-theme='light'] .lv-cyan,
+html[data-theme='light'] .lv-green,
+html[data-theme='light'] .lv-danger .num,
+html[data-theme='light'] .lv-warn .num,
+html[data-theme='light'] .lv-danger .val,
+html[data-theme='light'] .lv-warn .val { text-shadow: none; }
+html[data-theme='light'] .big { text-shadow: none; }
+
+/* 品牌名渐变 → 浅色实色 */
+html[data-theme='light'] .brandbar .name {
+  background: none;
+  -webkit-background-clip: initial;
+  background-clip: initial;
+  color: var(--cyan);
+}
+html[data-theme='light'] .brandbar .logo { color: var(--cyan); text-shadow: none; }
+
+/* 选区 / 滚动条适配浅色 */
+html[data-theme='light'] ::selection { background: rgba(9, 105, 218, 0.22); color: #24292f; }
+html[data-theme='light'] ::-webkit-scrollbar-thumb { background: rgba(87, 96, 106, 0.3); }
+html[data-theme='light'] ::-webkit-scrollbar-thumb:hover { background: rgba(9, 105, 218, 0.5); }
+
+/* 顶栏实底（浅色） */
+html[data-theme='light'] .brandbar,
+html[data-theme='light'] .topbar {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* 硬编码深色底的控件 → 浅色适配 */
+html[data-theme='light'] .topbar .stat { background: transparent; }
+html[data-theme='light'] .mode-select { background: var(--card-bg); }
+html[data-theme='light'] .theme-switch select { background: var(--card-bg); }
+html[data-theme='light'] .feed-box { background: #f6f8fa; }
+html[data-theme='light'] .cmdline { background: #f6f8fa; }
+html[data-theme='light'] .stat3 .stat { background: rgba(87, 96, 106, 0.06); }
+html[data-theme='light'] .legend .sw.free { background: rgba(87, 96, 106, 0.2); }

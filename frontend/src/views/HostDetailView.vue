@@ -165,6 +165,7 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { api } from '../api'
 import { useHostStream } from '../stream'
 import { fmtNum, fmtClock, fmtTokens, fmtDuration, alertLevel } from '../utils'
+import { chartTheme } from '../theme'
 import TopBar from '../components/TopBar.vue'
 import BarCard from '../components/BarCard.vue'
 import GaugeCard from '../components/GaugeCard.vue'
@@ -347,16 +348,8 @@ const topStats = computed(() => {
 
 // ---------------- 实时总览仪表 ----------------
 // MTP 接受率阈值反向：低为差（<65 红 / 65-80 黄 / ≥80 绿）
-const mtpZones = [
-  [0.65, 'rgba(255,59,92,0.16)'],
-  [0.8, 'rgba(255,197,61,0.16)'],
-  [1, 'rgba(0,255,157,0.12)']
-]
-const mtpZoneColors = [
-  [0.65, '#ff3b5c'],
-  [0.8, '#ffc53d'],
-  [1, '#00ff9d']
-]
+const mtpZones = computed(() => chartTheme().mtpZones)
+const mtpZoneColors = computed(() => chartTheme().mtpZoneColors)
 const mtpGaugeSub = computed(() => {
   const a = mtp.value.accepted
   const g = mtp.value.generated
@@ -406,15 +399,15 @@ function seriesOf(name, opts = {}) {
 }
 
 const chartGen = computed(() => {
-  const s = seriesOf('gen_speed', { name: 'gen', color: '#00e5ff', area: true })
+  const s = seriesOf('gen_speed', { name: 'gen', color: chartTheme().cyan, area: true })
   return s ? [s] : []
 })
 const chartPrompt = computed(() => {
-  const s = seriesOf('prompt_speed', { name: 'prompt', color: '#00ff9d', area: true })
+  const s = seriesOf('prompt_speed', { name: 'prompt', color: chartTheme().green, area: true })
   return s ? [s] : []
 })
 const chartGpuUtil = computed(() => {
-  const colors = ['#00e5ff', '#00ff9d', '#ffc53d', '#ff3b5c']
+  const colors = [chartTheme().cyan, chartTheme().green, chartTheme().amber, chartTheme().red]
   const out = []
   for (let i = 0; i < 8; i++) {
     const s = seriesOf(`gpu_util_${i}`, { name: `GPU${i}`, color: colors[i % colors.length] })
@@ -423,7 +416,7 @@ const chartGpuUtil = computed(() => {
   return out
 })
 const chartGpuMem = computed(() => {
-  const colors = ['#00e5ff', '#00ff9d', '#ffc53d', '#ff3b5c']
+  const colors = [chartTheme().cyan, chartTheme().green, chartTheme().amber, chartTheme().red]
   const out = []
   for (let i = 0; i < 8; i++) {
     const s = seriesOf(`gpu_mem_${i}`, { name: `GPU${i}`, color: colors[i % colors.length] })
@@ -432,7 +425,7 @@ const chartGpuMem = computed(() => {
   return out
 })
 const chartGpuTemp = computed(() => {
-  const colors = ['#00e5ff', '#00ff9d', '#ffc53d', '#ff3b5c']
+  const colors = [chartTheme().cyan, chartTheme().green, chartTheme().amber, chartTheme().red]
   const out = []
   for (let i = 0; i < 8; i++) {
     const s = seriesOf(`gpu_temp_${i}`, { name: `GPU${i}`, color: colors[i % colors.length] })
@@ -441,7 +434,7 @@ const chartGpuTemp = computed(() => {
   return out
 })
 const chartGpuPower = computed(() => {
-  const colors = ['#00e5ff', '#00ff9d', '#ffc53d', '#ff3b5c']
+  const colors = [chartTheme().cyan, chartTheme().green, chartTheme().amber, chartTheme().red]
   const out = []
   for (let i = 0; i < 8; i++) {
     const s = seriesOf(`gpu_power_${i}`, { name: `GPU${i}`, color: colors[i % colors.length] })
@@ -450,52 +443,52 @@ const chartGpuPower = computed(() => {
   return out
 })
 const chartCpu = computed(() => {
-  const s = seriesOf('cpu', { name: 'CPU', color: '#00e5ff', area: true })
+  const s = seriesOf('cpu', { name: 'CPU', color: chartTheme().cyan, area: true })
   return s ? [s] : []
 })
 const chartMem = computed(() => {
   const out = []
-  const u = seriesOf('mem_used', { name: '已用', color: '#00e5ff', area: true, stack: 'mem' })
-  const c = seriesOf('mem_buff_cache', { name: 'buff/cache', color: '#00ff9d', area: true, stack: 'mem' })
+  const u = seriesOf('mem_used', { name: '已用', color: chartTheme().cyan, area: true, stack: 'mem' })
+  const c = seriesOf('mem_buff_cache', { name: 'buff/cache', color: chartTheme().green, area: true, stack: 'mem' })
   if (u) out.push(u)
   if (c) out.push(c)
   return out
 })
 const chartNet = computed(() => {
   const out = []
-  const r = seriesOf('net_rx', { name: '下行', color: '#00e5ff' })
-  const t = seriesOf('net_tx', { name: '上行', color: '#00ff9d' })
+  const r = seriesOf('net_rx', { name: '下行', color: chartTheme().cyan })
+  const t = seriesOf('net_tx', { name: '上行', color: chartTheme().green })
   if (r) out.push(r)
   if (t) out.push(t)
   return out
 })
 const chartLoad = computed(() => {
   const out = []
-  const l1 = seriesOf('load_1', { name: '1m', color: '#00e5ff' })
-  const l5 = seriesOf('load_5', { name: '5m', color: '#00ff9d' })
-  const l15 = seriesOf('load_15', { name: '15m', color: '#ffc53d' })
+  const l1 = seriesOf('load_1', { name: '1m', color: chartTheme().cyan })
+  const l5 = seriesOf('load_5', { name: '5m', color: chartTheme().green })
+  const l15 = seriesOf('load_15', { name: '15m', color: chartTheme().amber })
   if (l1) out.push(l1)
   if (l5) out.push(l5)
   if (l15) out.push(l15)
   return out
 })
 const chartCtx = computed(() => {
-  const s = seriesOf('ctx_used', { name: 'n_tokens', color: '#00e5ff' })
+  const s = seriesOf('ctx_used', { name: 'n_tokens', color: chartTheme().cyan })
   if (!s) return []
   const total = ctxTotal.value
   if (total) {
     s.markLine = {
       silent: true,
       symbol: 'none',
-      lineStyle: { color: '#ff3b5c', type: 'dashed', width: 1 },
-      label: { color: '#ff3b5c', fontSize: 10, formatter: `n_ctx ${fmtNum(total)}` },
+      lineStyle: { color: chartTheme().red, type: 'dashed', width: 1 },
+      label: { color: chartTheme().red, fontSize: 10, formatter: `n_ctx ${fmtNum(total)}` },
       data: [{ yAxis: total }]
     }
   }
   return [s]
 })
 const chartMtp = computed(() => {
-  const s = seriesOf('mtp_acceptance', { name: '接受率', color: '#00ff9d', step: true })
+  const s = seriesOf('mtp_acceptance', { name: '接受率', color: chartTheme().green, step: true })
   if (!s) return []
   s.values = s.values.map((v) => (v === null ? null : v * 100))
   return [s]

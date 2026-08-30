@@ -1,0 +1,299 @@
+/* =====================================================================
+   Terminal 终端主题
+   目标：让面板看起来像一个真实的现代终端会话（macOS 窗口 + zsh + tmux）
+   所有规则以 html[data-theme='terminal'] 为前缀，
+   特异性高于组件 scoped 样式，无需改动组件即可整体换肤。
+   ===================================================================== */
+
+html[data-theme='terminal'] {
+  --bg: #0e0e10;
+  --bg-grad: #0e0e10;
+  --card-bg: transparent;
+  --card-border: #242428;
+  --card-border-hover: #36363c;
+  --cyan: #56b6c2;
+  --green: #98c379;
+  --amber: #e5c07b;
+  --red: #e06c75;
+  --text: #c8c8cc;
+  --text-dim: #787880;
+  --text-faint: #48484e;
+  --grid-line: transparent;
+  --chart-grid: rgba(120, 120, 128, 0.14);
+  --chrome-top: 38px;
+  --term-titlebar: #18181c;
+  --term-line: #242428;
+  --term-inset: #0a0a0c;
+  --term-track: #1c1c20;
+}
+
+/* ---------------- 全局：等宽字体 + 纯黑背景 + 扫描线 ---------------- */
+html[data-theme='terminal'] body {
+  background: var(--bg);
+  font-family: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas,
+    'Liberation Mono', monospace, 'PingFang SC', 'Microsoft YaHei';
+}
+
+/* 去掉极光网格背景 */
+html[data-theme='terminal'] body::before { display: none; }
+
+/* 极淡 CRT 扫描线（现代终端的质感细节，不影响可读性） */
+html[data-theme='terminal'] body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9998;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.012) 0px,
+    rgba(255, 255, 255, 0.012) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+
+/* 底部 tmux 状态栏占位 */
+html[data-theme='terminal'] #app { padding-bottom: 26px; }
+
+/* 终端式选区（iTerm2 风格蓝灰） */
+html[data-theme='terminal'] ::selection { background: #2d4a75; color: #fff; }
+
+/* 终端式滚动条 */
+html[data-theme='terminal'] ::-webkit-scrollbar { width: 10px; height: 10px; }
+html[data-theme='terminal'] ::-webkit-scrollbar-track { background: var(--bg); }
+html[data-theme='terminal'] ::-webkit-scrollbar-thumb {
+  background: #303036;
+  border-radius: 0;
+  border: 2px solid var(--bg);
+}
+html[data-theme='terminal'] ::-webkit-scrollbar-thumb:hover { background: #48484e; }
+
+/* ---------------- 卡片：去玻璃、去圆角、去辉光 ---------------- */
+html[data-theme='terminal'] .glass {
+  background: var(--card-bg);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-radius: 0;
+}
+html[data-theme='terminal'] .glass-hover:hover {
+  transform: none;
+  box-shadow: none;
+  border-color: var(--card-border-hover);
+}
+
+/* ---------------- 阈值飘红：htop 式，不整卡闪动，仅红色边框 + 数值变红 ---------------- */
+html[data-theme='terminal'] .card-danger {
+  border-color: var(--red);
+}
+html[data-theme='terminal'] .banner-danger {
+  border-radius: 0;
+  border-color: var(--red);
+}
+
+/* ---------------- 状态点：方块、无辉光、不脉冲 ---------------- */
+html[data-theme='terminal'] .dot { border-radius: 0; box-shadow: none; }
+html[data-theme='terminal'] .dot.online { animation: none; }
+
+/* ---------------- 徽章：[ OK ] 括号式 ---------------- */
+html[data-theme='terminal'] .badge { border-radius: 0; padding: 2px 7px; }
+html[data-theme='terminal'] .badge::before { content: '['; opacity: 0.7; }
+html[data-theme='terminal'] .badge::after { content: ']'; opacity: 0.7; }
+
+/* ---------------- 进度条：htop 式分块条（█ 块 + 1px 间隙） ---------------- */
+html[data-theme='terminal'] .bar {
+  background: var(--term-track);
+  border-radius: 0;
+}
+html[data-theme='terminal'] .bar > i {
+  border-radius: 0;
+  box-shadow: none;
+}
+/* htop 式渐变条：绿→黄→红 固定铺满整条，填充宽度揭示渐变（进度条 .green 保持纯绿） */
+html[data-theme='terminal'] .bar > i,
+html[data-theme='terminal'] .bar > i.warn,
+html[data-theme='terminal'] .bar > i.danger {
+  background: linear-gradient(90deg, #98c379 0%, #e5c07b 55%, #e06c75 100%);
+  background-size: calc(100% / (var(--pct) / 100)) 100%;
+  background-repeat: no-repeat;
+}
+
+/* ---------------- 区块标题：── 终端分隔线式 ---------------- */
+html[data-theme='terminal'] .section-title {
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-dim);
+}
+html[data-theme='terminal'] .section-title::before {
+  content: '──';
+  width: auto;
+  height: auto;
+  background: none;
+  box-shadow: none;
+  border-radius: 0;
+  color: var(--text-faint);
+  font-size: 12px;
+  font-weight: 400;
+}
+html[data-theme='terminal'] .section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--term-line);
+}
+
+/* ---------------- 收紧间距：更接近终端输出的密度 ---------------- */
+html[data-theme='terminal'] .content { padding: 14px 24px 32px; }
+html[data-theme='terminal'] .grid { gap: 12px; padding: 14px 24px; }
+
+/* ---------------- 表格 ---------------- */
+html[data-theme='terminal'] .tbl th {
+  border-bottom-color: var(--term-line);
+  background: rgba(120, 120, 128, 0.12);
+  color: var(--text-dim);
+  font-weight: 600;
+}
+html[data-theme='terminal'] .tbl td { border-bottom-color: transparent; }
+
+/* ---------------- 骨架屏：灰色微光 ---------------- */
+html[data-theme='terminal'] .skeleton {
+  border-radius: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(139, 144, 156, 0.05) 25%,
+    rgba(139, 144, 156, 0.12) 50%,
+    rgba(139, 144, 156, 0.05) 75%
+  );
+  background-size: 200% 100%;
+}
+
+/* ---------------- 暂停水印 ---------------- */
+html[data-theme='terminal'] .paused-watermark span { color: rgba(139, 144, 156, 0.12); }
+
+/* ---------------- 顶栏（BrandBar / TopBar）：扁平终端标题条（实底，滚动内容不透出） ---------------- */
+html[data-theme='terminal'] .brandbar,
+html[data-theme='terminal'] .topbar {
+  background: var(--bg);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-bottom-color: var(--term-line);
+}
+html[data-theme='terminal'] .brandbar .stat,
+html[data-theme='terminal'] .topbar .stat {
+  background: transparent;
+  border-color: var(--term-line);
+  border-radius: 0;
+}
+html[data-theme='terminal'] .brandbar .logo {
+  color: var(--green);
+  text-shadow: none;
+}
+html[data-theme='terminal'] .brandbar .name {
+  background: none;
+  -webkit-background-clip: initial;
+  background-clip: initial;
+  color: var(--green);
+  letter-spacing: 0;
+}
+html[data-theme='terminal'] .brandbar .conn { border-radius: 0; }
+html[data-theme='terminal'] .brandbar .clock-sep,
+html[data-theme='terminal'] .topbar .clock-sep { background: var(--term-line); }
+html[data-theme='terminal'] .mode-select {
+  background: var(--card-bg);
+  border-radius: 0;
+  font-family: inherit;
+}
+html[data-theme='terminal'] .mode-indicator { border-radius: 0; box-shadow: none; }
+
+/* ---------------- 主题切换器：[ 主题: ... ] ---------------- */
+html[data-theme='terminal'] .theme-switch::before { content: '['; color: var(--text-faint); }
+html[data-theme='terminal'] .theme-switch::after { content: ']'; color: var(--text-faint); }
+html[data-theme='terminal'] .theme-switch select {
+  background: var(--card-bg);
+  border-radius: 0;
+  font-family: inherit;
+}
+
+/* ---------------- HostCard（门户） ---------------- */
+html[data-theme='terminal'] .big { text-shadow: none; }
+html[data-theme='terminal'] .alert-badge { border-radius: 0; box-shadow: none; }
+
+/* ---------------- GpuPanel ---------------- */
+html[data-theme='terminal'] .gpu-icon { filter: none; }
+html[data-theme='terminal'] .gauge circle:first-of-type { stroke: var(--term-line); }
+html[data-theme='terminal'] .gauge circle:nth-of-type(2) { filter: none !important; }
+html[data-theme='terminal'] .apps { border-top-color: var(--term-line); }
+
+/* ---------------- CpuPanel：htop 式核条 ---------------- */
+html[data-theme='terminal'] .core-bar { background: var(--term-track); border-radius: 0; }
+html[data-theme='terminal'] .core-bar i { border-radius: 0; box-shadow: none; }
+html[data-theme='terminal'] .core-bar i.warn { box-shadow: none; }
+html[data-theme='terminal'] .core-bar i.danger { box-shadow: none; }
+
+/* ---------------- MemPanel ---------------- */
+html[data-theme='terminal'] .stack-bar { background: var(--term-track); border-radius: 0; }
+html[data-theme='terminal'] .stack-bar .used { box-shadow: none; }
+html[data-theme='terminal'] .legend .sw { border-radius: 0; }
+html[data-theme='terminal'] .legend .sw.free { background: rgba(120, 120, 128, 0.25); }
+html[data-theme='terminal'] .stack-bar .cache { background: rgba(152, 195, 121, 0.55); }
+html[data-theme='terminal'] .legend .sw.cache { background: rgba(152, 195, 121, 0.55); }
+
+/* ---------------- LlamaStateCard ---------------- */
+html[data-theme='terminal'] .state-card.active {
+  border-color: var(--green);
+  box-shadow: none;
+}
+html[data-theme='terminal'] .lv-cyan { text-shadow: none; }
+html[data-theme='terminal'] .lv-green { text-shadow: none; }
+html[data-theme='terminal'] .stat3 .stat {
+  background: rgba(120, 120, 128, 0.06);
+  border-color: var(--term-line);
+  border-radius: 0;
+}
+html[data-theme='terminal'] .s-val.cyan { text-shadow: none; }
+html[data-theme='terminal'] .s-val.green { text-shadow: none; }
+html[data-theme='terminal'] .cfg-strip { border-top-color: var(--term-line); }
+
+/* ---------------- BarCard / GaugeCard 大数字辉光 ---------------- */
+html[data-theme='terminal'] .lv-danger .num { text-shadow: none; }
+html[data-theme='terminal'] .lv-warn .num { text-shadow: none; }
+html[data-theme='terminal'] .lv-danger .val { text-shadow: none; }
+html[data-theme='terminal'] .lv-warn .val { text-shadow: none; }
+
+/* ---------------- EventFeed：内嵌终端子窗格 ---------------- */
+html[data-theme='terminal'] .feed-head { border-bottom-color: var(--term-line); }
+html[data-theme='terminal'] .feed-box {
+  background: var(--term-inset);
+  border-radius: 0;
+}
+html[data-theme='terminal'] .new-btn {
+  background: rgba(152, 195, 121, 0.12);
+  color: var(--green);
+  border-color: rgba(152, 195, 121, 0.4);
+  border-radius: 0;
+}
+html[data-theme='terminal'] .new-btn:hover { background: rgba(152, 195, 121, 0.2); }
+
+/* ---------------- LlamaProcessCard ---------------- */
+html[data-theme='terminal'] .service { border-top-color: var(--term-line); }
+html[data-theme='terminal'] .cmdline {
+  background: var(--term-inset);
+  border-radius: 0;
+}
+
+/* ---------------- ModelInfoCard ---------------- */
+html[data-theme='terminal'] .tag {
+  border-color: var(--term-line);
+  border-radius: 0;
+}
+html[data-theme='terminal'] .tag.on { border-color: rgba(152, 195, 121, 0.4); background: rgba(152, 195, 121, 0.07); }
+
+/* ---------------- 趋势区（HostDetailView） ---------------- */
+html[data-theme='terminal'] .win-switch button { border-radius: 0; }
+html[data-theme='terminal'] .win-switch button.on {
+  color: var(--green);
+  border-color: rgba(152, 195, 121, 0.5);
+  background: rgba(152, 195, 121, 0.08);
+}
+html[data-theme='terminal'] .trend-group { border-bottom-color: var(--term-line); }
+html[data-theme='terminal'] .trend-group::before { content: '# '; color: var(--text-faint); }

@@ -1,0 +1,43 @@
+/* =====================================================================
+   Matrix 主题（黑客帝国绿，黑底荧光绿，炫酷）
+   纯黑底 + 霓虹绿辉光；辉光同步 Matrix 绿
+   所有规则以 html[data-theme='matrix'] 为前缀
+   ===================================================================== */
+
+html[data-theme='matrix'] {
+  --bg: #050805;
+  --bg-grad: #0a0e0a;
+  --card-bg: rgba(5, 8, 5, 0.72);
+  --card-border: rgba(0, 255, 65, 0.18);
+  --card-border-hover: rgba(0, 255, 65, 0.42);
+  --cyan: #00ff41;
+  --green: #00ff41;
+  --amber: #aaff00;
+  --red: #ff003c;
+  --text: #00ff41;
+  --text-dim: #00cc33;
+  --text-faint: #008822;
+  --grid-line: rgba(0, 255, 65, 0.05);
+  --chart-grid: rgba(0, 255, 65, 0.12);
+}
+
+/* 辉光同步 Matrix 绿 */
+html[data-theme='matrix'] .glass-hover:hover { box-shadow: 0 0 12px rgba(0, 255, 65, 0.22); }
+html[data-theme='matrix'] .bar > i { box-shadow: 0 0 6px rgba(0, 255, 65, 0.5); }
+html[data-theme='matrix'] .bar > i.warn { box-shadow: 0 0 6px rgba(170, 255, 0, 0.5); }
+html[data-theme='matrix'] .bar > i.danger { box-shadow: 0 0 6px rgba(255, 0, 60, 0.5); }
+html[data-theme='matrix'] .bar > i.green { box-shadow: 0 0 6px rgba(0, 255, 65, 0.5); }
+
+/* 品牌名渐变 → Matrix 绿/荧光黄绿 */
+html[data-theme='matrix'] .brandbar .name {
+  background: linear-gradient(90deg, #00ff41, #aaff00);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+html[data-theme='matrix'] .brandbar .logo { color: #00ff41; }
+
+/* 选区 / 滚动条 */
+html[data-theme='matrix'] ::selection { background: rgba(0, 255, 65, 0.3); color: #00ff41; }
+html[data-theme='matrix'] ::-webkit-scrollbar-thumb { background: rgba(0, 136, 34, 0.4); }
+html[data-theme='matrix'] ::-webkit-scrollbar-thumb:hover { background: rgba(0, 255, 65, 0.5); }

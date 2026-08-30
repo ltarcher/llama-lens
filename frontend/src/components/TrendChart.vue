@@ -10,7 +10,8 @@
 
 <script setup>
 import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { baseOption, lineSeries, initChart, PALETTE } from '../theme/echarts-dark'
+import { baseOption, lineSeries, initChart } from '../theme/echarts-dark'
+import { themeState, palette, chartTheme } from '../theme'
 
 const props = defineProps({
   title: { type: String, required: true },
@@ -29,7 +30,8 @@ let ro = null
 function buildOption() {
   const opt = baseOption()
   opt.series = props.series.map((s, i) => {
-    const color = s.color || PALETTE[i % PALETTE.length]
+    const pal = palette()
+    const color = s.color || pal[i % pal.length]
     const data = (s.ts || []).map((t, j) => [t * 1000, s.values[j] === null || s.values[j] === undefined ? null : s.values[j]])
     return lineSeries(s.name, data, color, {
       step: s.step,
@@ -47,7 +49,7 @@ function buildOption() {
       right: 8,
       itemWidth: 12,
       itemHeight: 8,
-      textStyle: { color: '#8fa3c8', fontSize: 10 }
+      textStyle: { color: chartTheme().dim, fontSize: 10 }
     }
   }
   return opt
@@ -68,6 +70,7 @@ onMounted(async () => {
 
 watch(() => props.series, render, { deep: false })
 watch(() => [props.yMax, props.yMin], render)
+watch(() => themeState.version, render)
 
 onBeforeUnmount(() => {
   if (ro) ro.disconnect()

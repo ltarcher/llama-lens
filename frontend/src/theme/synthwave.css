@@ -1,0 +1,43 @@
+/* =====================================================================
+   Synthwave '84 主题（参考 VSCode Synthwave '84，复古霓虹粉/紫/青，炫酷）
+   深紫底 + 高饱和霓虹辉光；辉光同步 Synthwave 粉/青
+   所有规则以 html[data-theme='synthwave'] 为前缀
+   ===================================================================== */
+
+html[data-theme='synthwave'] {
+  --bg: #262335;
+  --bg-grad: #1e1b2e;
+  --card-bg: rgba(38, 35, 53, 0.72);
+  --card-border: rgba(255, 126, 219, 0.2);
+  --card-border-hover: rgba(255, 126, 219, 0.45);
+  --cyan: #05f4ea;
+  --green: #72f1b1;
+  --amber: #fde74c;
+  --red: #ff5555;
+  --text: #f0efff;
+  --text-dim: #a9a1d1;
+  --text-faint: #6e6a8f;
+  --grid-line: rgba(255, 126, 219, 0.05);
+  --chart-grid: rgba(169, 161, 209, 0.14);
+}
+
+/* 辉光同步 Synthwave 粉/青 */
+html[data-theme='synthwave'] .glass-hover:hover { box-shadow: 0 0 12px rgba(255, 126, 219, 0.25); }
+html[data-theme='synthwave'] .bar > i { box-shadow: 0 0 6px rgba(5, 244, 234, 0.5); }
+html[data-theme='synthwave'] .bar > i.warn { box-shadow: 0 0 6px rgba(253, 231, 76, 0.5); }
+html[data-theme='synthwave'] .bar > i.danger { box-shadow: 0 0 6px rgba(255, 85, 85, 0.5); }
+html[data-theme='synthwave'] .bar > i.green { box-shadow: 0 0 6px rgba(114, 241, 177, 0.5); }
+
+/* 品牌名渐变 → Synthwave 粉/青 */
+html[data-theme='synthwave'] .brandbar .name {
+  background: linear-gradient(90deg, #ff7edb, #05f4ea);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+html[data-theme='synthwave'] .brandbar .logo { color: #ff7edb; }
+
+/* 选区 / 滚动条 */
+html[data-theme='synthwave'] ::selection { background: rgba(255, 126, 219, 0.32); color: #f0efff; }
+html[data-theme='synthwave'] ::-webkit-scrollbar-thumb { background: rgba(110, 106, 143, 0.4); }
+html[data-theme='synthwave'] ::-webkit-scrollbar-thumb:hover { background: rgba(5, 244, 234, 0.5); }

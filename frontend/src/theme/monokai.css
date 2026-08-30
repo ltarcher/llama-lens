@@ -1,0 +1,43 @@
+/* =====================================================================
+   Monokai 主题（参考 VSCode Monokai，经典高饱和代码配色）
+   深色玻璃拟态 + 高饱和 ANSI 色；辉光同步为 Monokai 色
+   所有规则以 html[data-theme='monokai'] 为前缀
+   ===================================================================== */
+
+html[data-theme='monokai'] {
+  --bg: #272822;
+  --bg-grad: #1e1f1a;
+  --card-bg: rgba(39, 40, 34, 0.72);
+  --card-border: rgba(230, 219, 116, 0.16);
+  --card-border-hover: rgba(230, 219, 116, 0.4);
+  --cyan: #66d9ef;
+  --green: #a6e22e;
+  --amber: #e6db74;
+  --red: #f92672;
+  --text: #f8f8f2;
+  --text-dim: #939293;
+  --text-faint: #75715e;
+  --grid-line: rgba(230, 219, 116, 0.045);
+  --chart-grid: rgba(147, 146, 147, 0.14);
+}
+
+/* 辉光同步 Monokai 色 */
+html[data-theme='monokai'] .glass-hover:hover { box-shadow: 0 0 12px rgba(102, 217, 239, 0.2); }
+html[data-theme='monokai'] .bar > i { box-shadow: 0 0 6px rgba(102, 217, 239, 0.5); }
+html[data-theme='monokai'] .bar > i.warn { box-shadow: 0 0 6px rgba(230, 219, 116, 0.5); }
+html[data-theme='monokai'] .bar > i.danger { box-shadow: 0 0 6px rgba(249, 38, 114, 0.5); }
+html[data-theme='monokai'] .bar > i.green { box-shadow: 0 0 6px rgba(166, 226, 46, 0.5); }
+
+/* 品牌名渐变 → Monokai 粉/青 */
+html[data-theme='monokai'] .brandbar .name {
+  background: linear-gradient(90deg, #f92672, #66d9ef);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+html[data-theme='monokai'] .brandbar .logo { color: #66d9ef; }
+
+/* 选区 / 滚动条 */
+html[data-theme='monokai'] ::selection { background: rgba(102, 217, 239, 0.3); color: #f8f8f2; }
+html[data-theme='monokai'] ::-webkit-scrollbar-thumb { background: rgba(147, 146, 147, 0.3); }
+html[data-theme='monokai'] ::-webkit-scrollbar-thumb:hover { background: rgba(102, 217, 239, 0.5); }

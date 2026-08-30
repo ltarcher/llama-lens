@@ -29,6 +29,7 @@
     </div>
 
     <div class="right">
+      <ThemeSwitcher />
       <span v-if="!llamaOnline" class="badge danger">llama 离线</span>
       <span v-else-if="!sshOk" class="badge warn">SSH 断开</span>
       <span v-else class="badge ok">在线</span>
@@ -51,6 +52,7 @@
 import { computed } from 'vue'
 import { fmtTokens, fmtGB, alertLevel } from '../utils'
 import LiveClock from './LiveClock.vue'
+import ThemeSwitcher from './ThemeSwitcher.vue'
 
 const props = defineProps({
   hostName: { type: String, default: '' },
@@ -162,7 +164,7 @@ function onModeChange(e) {
   background: rgba(10, 14, 23, 0.6);
   backdrop-filter: blur(12px);
   position: sticky;
-  top: 0;
+  top: var(--chrome-top, 0px);
   z-index: 20;
 }
 .back { color: var(--text-dim); font-size: 13px; flex: none; }

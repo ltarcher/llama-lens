@@ -1,0 +1,24 @@
+# VCS 与凭证（绝不进镜像）
+.git
+.gitignore
+.env
+config/hosts.yaml
+
+# 前端依赖与构建产物（镜像内重新构建）
+frontend/node_modules/
+frontend/dist/
+
+# Python
+__pycache__/
+*.pyc
+
+# 日志
+logs/
+
+# 文档与开发工具（运行时不需要）
+docs/
+test/
+*.md
+.clinerules/
+.codex/
+.agents/

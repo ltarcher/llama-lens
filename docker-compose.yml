@@ -1,0 +1,20 @@
+# LlamaLens Docker 部署
+# 用法：
+#   1. cp config/hosts.example.yaml config/hosts.yaml   # 填写主机信息
+#   2. cp .env.example .env                             # 填写 SSH 密码
+#   3. docker compose up -d --build
+#   4. 打开 http://<主机>:8000
+services:
+  llamalens:
+    build: .
+    image: llamalens:latest
+    container_name: llamalens
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+    volumes:
+      - ./config/hosts.yaml:/app/config/hosts.yaml:ro
+      - ./.env:/app/.env:ro
+      - ./logs:/app/logs
+    restart: unless-stopped

@@ -1,0 +1,43 @@
+/* =====================================================================
+   Tokyo Night 主题（参考 VSCode Tokyo Night，冷调深蓝，现代炫酷）
+   深蓝底 + 柔和蓝紫辉光；辉光同步 Tokyo Night 蓝
+   所有规则以 html[data-theme='tokyonight'] 为前缀
+   ===================================================================== */
+
+html[data-theme='tokyonight'] {
+  --bg: #1a1b26;
+  --bg-grad: #16161e;
+  --card-bg: rgba(26, 27, 38, 0.72);
+  --card-border: rgba(122, 162, 247, 0.18);
+  --card-border-hover: rgba(122, 162, 247, 0.42);
+  --cyan: #7dcfff;
+  --green: #9ece6a;
+  --amber: #e0af68;
+  --red: #f7768e;
+  --text: #c0caf5;
+  --text-dim: #9aa5ce;
+  --text-faint: #565f89;
+  --grid-line: rgba(122, 162, 247, 0.05);
+  --chart-grid: rgba(154, 165, 206, 0.14);
+}
+
+/* 辉光同步 Tokyo Night 蓝 */
+html[data-theme='tokyonight'] .glass-hover:hover { box-shadow: 0 0 12px rgba(122, 162, 247, 0.22); }
+html[data-theme='tokyonight'] .bar > i { box-shadow: 0 0 6px rgba(125, 207, 255, 0.5); }
+html[data-theme='tokyonight'] .bar > i.warn { box-shadow: 0 0 6px rgba(224, 175, 104, 0.5); }
+html[data-theme='tokyonight'] .bar > i.danger { box-shadow: 0 0 6px rgba(247, 118, 142, 0.5); }
+html[data-theme='tokyonight'] .bar > i.green { box-shadow: 0 0 6px rgba(158, 206, 106, 0.5); }
+
+/* 品牌名渐变 → Tokyo Night 蓝/紫 */
+html[data-theme='tokyonight'] .brandbar .name {
+  background: linear-gradient(90deg, #7aa2f7, #bb9af7);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+html[data-theme='tokyonight'] .brandbar .logo { color: #7aa2f7; }
+
+/* 选区 / 滚动条 */
+html[data-theme='tokyonight'] ::selection { background: rgba(122, 162, 247, 0.32); color: #c0caf5; }
+html[data-theme='tokyonight'] ::-webkit-scrollbar-thumb { background: rgba(86, 95, 137, 0.4); }
+html[data-theme='tokyonight'] ::-webkit-scrollbar-thumb:hover { background: rgba(125, 207, 255, 0.5); }

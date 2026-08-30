@@ -1,0 +1,43 @@
+/* =====================================================================
+   Nord 主题（参考 VSCode Nord，极地夜 + 极光，冷调低饱和，优雅克制）
+   深色玻璃拟态 + 冷调 Frost/Aurora 色；辉光同步为 Nord 色
+   所有规则以 html[data-theme='nord'] 为前缀
+   ===================================================================== */
+
+html[data-theme='nord'] {
+  --bg: #2e3440;
+  --bg-grad: #2b303b;
+  --card-bg: rgba(59, 66, 82, 0.6);
+  --card-border: rgba(136, 192, 208, 0.16);
+  --card-border-hover: rgba(136, 192, 208, 0.42);
+  --cyan: #88c0d0;
+  --green: #a3be8c;
+  --amber: #ebcb8b;
+  --red: #bf616a;
+  --text: #eceff4;
+  --text-dim: #d8dee9;
+  --text-faint: #7b88a1;
+  --grid-line: rgba(136, 192, 208, 0.045);
+  --chart-grid: rgba(216, 222, 233, 0.13);
+}
+
+/* 辉光同步 Nord 色（柔和） */
+html[data-theme='nord'] .glass-hover:hover { box-shadow: 0 0 12px rgba(136, 192, 208, 0.18); }
+html[data-theme='nord'] .bar > i { box-shadow: 0 0 6px rgba(136, 192, 208, 0.45); }
+html[data-theme='nord'] .bar > i.warn { box-shadow: 0 0 6px rgba(235, 203, 139, 0.45); }
+html[data-theme='nord'] .bar > i.danger { box-shadow: 0 0 6px rgba(191, 97, 106, 0.45); }
+html[data-theme='nord'] .bar > i.green { box-shadow: 0 0 6px rgba(163, 190, 140, 0.45); }
+
+/* 品牌名渐变 → Nord Frost/Aurora */
+html[data-theme='nord'] .brandbar .name {
+  background: linear-gradient(90deg, #88c0d0, #a3be8c);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+html[data-theme='nord'] .brandbar .logo { color: #88c0d0; }
+
+/* 选区 / 滚动条 */
+html[data-theme='nord'] ::selection { background: rgba(136, 192, 208, 0.3); color: #eceff4; }
+html[data-theme='nord'] ::-webkit-scrollbar-thumb { background: rgba(123, 136, 161, 0.35); }
+html[data-theme='nord'] ::-webkit-scrollbar-thumb:hover { background: rgba(136, 192, 208, 0.5); }

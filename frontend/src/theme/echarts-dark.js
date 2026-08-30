@@ -1,26 +1,31 @@
 import * as echarts from 'echarts'
+import { chartTheme } from './index'
 
-export const PALETTE = ['#00e5ff', '#00ff9d', '#ffc53d', '#ff3b5c', '#7c8cff', '#ff8f5c', '#c792ea']
+const MONO = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
 
 export function baseOption() {
+  const t = chartTheme()
+  const mono = t.glow ? {} : { fontFamily: MONO }
   return {
     backgroundColor: 'transparent',
     animation: false,
     grid: { left: 52, right: 14, top: 26, bottom: 22 },
     tooltip: {
       trigger: 'axis',
-      backgroundColor: 'rgba(10, 14, 23, 0.94)',
-      borderColor: 'rgba(0, 229, 255, 0.3)',
+      backgroundColor: t.tooltipBg,
+      borderColor: t.tooltipBorder,
       borderWidth: 1,
-      textStyle: { color: '#e6f1ff', fontSize: 11 },
-      axisPointer: { lineStyle: { color: 'rgba(0, 229, 255, 0.4)' } }
+      ...(t.glow ? {} : { borderRadius: 0 }),
+      textStyle: { color: t.tooltipText, fontSize: 11, ...mono },
+      axisPointer: { lineStyle: { color: t.axisPointer } }
     },
     xAxis: {
       type: 'time',
-      axisLine: { lineStyle: { color: 'rgba(143, 163, 200, 0.3)' } },
+      axisLine: { lineStyle: { color: t.axisLine } },
       axisLabel: {
-        color: '#8fa3c8',
+        color: t.dim,
         fontSize: 10,
+        ...mono,
         formatter: (v) => {
           const d = new Date(v)
           return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
@@ -30,13 +35,14 @@ export function baseOption() {
     },
     yAxis: {
       type: 'value',
-      axisLabel: { color: '#8fa3c8', fontSize: 10 },
-      splitLine: { lineStyle: { color: 'rgba(143, 163, 200, 0.12)' } }
+      axisLabel: { color: t.dim, fontSize: 10, ...mono },
+      splitLine: { lineStyle: { color: t.splitLine } }
     }
   }
 }
 
 export function lineSeries(name, data, color, opts = {}) {
+  const t = chartTheme()
   const s = {
     name,
     type: 'line',
@@ -45,18 +51,24 @@ export function lineSeries(name, data, color, opts = {}) {
     step: opts.step ? 'start' : false,
     symbol: 'none',
     connectNulls: false,
-    lineStyle: { width: 1.5, color, shadowBlur: 8, shadowColor: `${color}55` },
+    lineStyle: {
+      width: 1.5,
+      color,
+      ...(t.glow ? { shadowBlur: 8, shadowColor: `${color}55` } : {})
+    },
     itemStyle: { color },
     emphasis: { focus: 'series' }
   }
   if (opts.stack) s.stack = opts.stack
   if (opts.area) {
-    s.areaStyle = {
-      color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-        { offset: 0, color: `${color}40` },
-        { offset: 1, color: `${color}00` }
-      ])
-    }
+    s.areaStyle = t.glow
+      ? {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: `${color}40` },
+            { offset: 1, color: `${color}00` }
+          ])
+        }
+      : { color: `${color}14` }
   }
   if (opts.yAxisIndex !== undefined) s.yAxisIndex = opts.yAxisIndex
   if (opts.markLine) s.markLine = opts.markLine
@@ -68,13 +80,10 @@ export function initChart(el) {
 }
 
 export function gaugeOption(value, color, zones) {
+  const t = chartTheme()
   const has = value !== null && value !== undefined && Number.isFinite(value)
   const v = has ? Math.max(0, Math.min(100, value)) : 0
-  const zoneColors = zones || [
-    [0.8, 'rgba(0,229,255,0.10)'],
-    [0.9, 'rgba(255,197,61,0.16)'],
-    [1, 'rgba(255,59,92,0.18)']
-  ]
+  const zoneColors = zones || t.gaugeZones
   return {
     backgroundColor: 'transparent',
     animation: true,
@@ -102,23 +111,21 @@ export function gaugeOption(value, color, zones) {
           width: 3,
           itemStyle: {
             color,
-            shadowBlur: 6,
-            shadowColor: `${color}88`
+            ...(t.glow ? { shadowBlur: 6, shadowColor: `${color}88` } : {})
           }
         },
         anchor: {
           show: true,
           size: 8,
-          itemStyle: { color: '#0d1526', borderColor: color, borderWidth: 2 }
+          itemStyle: { color: t.gaugeAnchorBg, borderColor: color, borderWidth: 2 }
         },
         progress: {
           show: true,
           width: 12,
-          roundCap: true,
+          roundCap: t.glow,
           itemStyle: {
             color,
-            shadowBlur: 10,
-            shadowColor: `${color}55`
+            ...(t.glow ? { shadowBlur: 10, shadowColor: `${color}55` } : {})
           }
         },
         axisTick: {
@@ -126,18 +133,18 @@ export function gaugeOption(value, color, zones) {
           splitNumber: 5,
           distance: -14,
           length: 3,
-          lineStyle: { color: 'rgba(143,163,200,0.28)', width: 1 }
+          lineStyle: { color: t.gaugeTick, width: 1 }
         },
         splitLine: {
           show: true,
           distance: -15,
           length: 7,
-          lineStyle: { color: 'rgba(143,163,200,0.5)', width: 1 }
+          lineStyle: { color: t.gaugeSplit, width: 1 }
         },
         axisLabel: {
           show: true,
           distance: 10,
-          color: '#5a6b8c',
+          color: t.faint,
           fontSize: 9,
           fontFamily: 'JetBrains Mono, Roboto Mono, monospace'
         },

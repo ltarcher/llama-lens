@@ -305,30 +305,59 @@ class LogPoller:
     async def _poll_file_once(self) -> None:
         """file 模式周期拉取：按字节偏移读新增内容（处理轮转/截断）。"""
         path = self.cfg.log.path or ""
-        size_out = await self.ssh.exec_command(
-            "stat -c %%s %s 2>/dev/null || echo 0" % path)
+        
+        # 根据操作系统类型选择命令
+        is_windows = False
+        try:
+            from ..pollers.ssh_host import OSType
+            # 通过 SSH 执行命令检测
+            test_out = await self.ssh.exec_command("uname -s 2>/dev/null")
+            is_windows = test_out is None or "Windows" in test_out or "MINGW" in test_out
+        except:
+            pass
+        
+        if is_windows:
+            # Windows: 使用 PowerShell 读取文件
+            size_cmd = 'powershell -NoProfile -Command "(Get-Item \\"%s\\" -ErrorAction SilentlyContinue).Length" 2>/dev/null' % path.replace('\\', '\\\\')
+            size_out = await self.ssh.exec_command(size_cmd)
+        else:
+            size_out = await self.ssh.exec_command(
+                "stat -c %%s %s 2>/dev/null || echo 0" % path)
+        
         if size_out is None:
             self.available = False
             self.state["available"] = False
             return
+        
         try:
             size = int(size_out.strip() or 0)
         except ValueError:
             size = 0
+        
         if self._file_offset is None:
             # 首次：从当前文件末尾开始，只读新增内容
             self._file_offset = size
             self.available = True
             self.state["available"] = True
             return
+        
         if size < self._file_offset:
             # 文件轮转/截断：跳过已有内容，从新文件末尾继续读，避免整文件重读
             self._file_offset = size
+        
         self.available = True
         self.state["available"] = True
+        
         if size > self._file_offset:
-            out = await self.ssh.exec_command(
-                "tail -c +%d %s 2>/dev/null" % (self._file_offset + 1, path))
+            if is_windows:
+                # Windows: 使用 PowerShell 读取文件新增内容
+                read_cmd = 'powershell -NoProfile -Command "$bytes = [System.IO.File]::ReadAllBytes(\\"%s\\"); if ($bytes.Length -gt %d) { [System.Text.Encoding]::UTF8.GetString($bytes[%d..$($bytes.Length-1)]) }" 2>/dev/null' % (
+                    path.replace('\\', '\\\\'), self._file_offset, self._file_offset)
+                out = await self.ssh.exec_command(read_cmd)
+            else:
+                out = await self.ssh.exec_command(
+                    "tail -c +%d %s 2>/dev/null" % (self._file_offset + 1, path))
+            
             self._file_offset = size
             if out is not None:
                 for line in out.splitlines():

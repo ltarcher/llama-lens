@@ -35,12 +35,16 @@ def load_dotenv(path: str) -> None:
 
 
 _ENV_RE = re.compile(r"\$\{(\w+)\}")
+_WIN_ENV_RE = re.compile(r"%(\w+)%")
 
 
 def resolve_env(value: Any) -> Any:
-    """解析字符串中的 ${VAR} 环境变量引用。"""
+    """解析字符串中的 ${VAR} 和 %VAR% 环境变量引用。"""
     if isinstance(value, str):
-        return _ENV_RE.sub(lambda m: os.environ.get(m.group(1), m.group(0)), value)
+        # 先解析 ${VAR} 格式
+        value = _ENV_RE.sub(lambda m: os.environ.get(m.group(1), m.group(0)), value)
+        # 再解析 %VAR% 格式（Windows 环境变量）
+        value = _WIN_ENV_RE.sub(lambda m: os.environ.get(m.group(1), m.group(0)), value)
     return value
 
 

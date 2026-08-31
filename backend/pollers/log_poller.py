@@ -71,6 +71,9 @@ BOOT_BLOCK_CMD = (
 BOOT_BLOCK_CMD_FILE = (
     "tail -n 50000 {path} 2>/dev/null | grep -B 200 'listening on' | tail -201"
 )
+BOOT_BLOCK_CMD_WIN = (
+    "powershell -NoProfile -Command \"Get-WinEvent -LogName Application -MaxEvents 50000 | Where-Object {{ $_.Message -like '*llama-server*' }} | Select-Object TimeCreated,Message -Last 500 | ConvertTo-Json -Compress\""
+)
 
 
 def _f(x, default=None):
@@ -189,6 +192,8 @@ class LogPoller:
         cfg = self.cfg.log
         if cfg.source == "file":
             cmd = BOOT_BLOCK_CMD_FILE.format(path=cfg.path or "")
+        elif cfg.source == "windows_eventlog":
+            cmd = BOOT_BLOCK_CMD_WIN
         else:
             cmd = BOOT_BLOCK_CMD.format(unit=cfg.unit)
         out = await self.ssh.exec_command(cmd)
@@ -199,7 +204,7 @@ class LogPoller:
             self._parse_boot_line(m.group(5) if m else line)
 
     def _follow_cmd(self) -> str:
-        """按日志源（journal | file）构造流式跟随命令。"""
+        """按日志源（journal | file | windows_eventlog）构造流式跟随命令。"""
         cfg = self.cfg.log
         if cfg.source == "file":
             path = cfg.path or ""
@@ -207,11 +212,19 @@ class LogPoller:
                 # 重连后补拉最近 200 行防丢行
                 return "tail -n 200 -F %s" % path
             return "tail -n 0 -F %s" % path
-        unit = cfg.unit
-        if self._last_line_ts is not None:
-            since = int(time.time()) - cfg.catchup_sec
-            return "journalctl -u %s -o short-iso --no-pager --since '@%d' -f" % (unit, since)
-        return "journalctl -u %s -o short-iso --no-pager -f -n 0" % unit
+        elif cfg.source == "windows_eventlog":
+            # Windows 事件日志：使用 Get-WinEvent 实时监控
+            if self._last_line_ts is not None:
+                since = int(self._last_line_ts) - cfg.catchup_sec
+                return "powershell -NoProfile -Command \"Get-WinEvent -FilterHashtable {{LogName='Application'; StartTime=(Get-Date).AddSeconds(-{0})}} -MaxEvents 1000 | Where-Object {{ $_.Message -like '*llama-server*' }} | Format-List TimeCreated,Message\"".format(cfg.catchup_sec)
+            return "powershell -NoProfile -Command \"Get-WinEvent -LogName Application -MaxEvents 100 | Where-Object {{ $_.Message -like '*llama-server*' }} | Format-List TimeCreated,Message\""
+        else:
+            # journal 模式
+            unit = cfg.unit
+            if self._last_line_ts is not None:
+                since = int(time.time()) - cfg.catchup_sec
+                return "journalctl -u %s -o short-iso --no-pager --since '@%d' -f" % (unit, since)
+            return "journalctl -u %s -o short-iso --no-pager -f -n 0" % unit
 
     async def _follow(self) -> None:
         """流式跟随日志（journal 或 file）；channel 断开后由 start() 循环重连并补拉。"""

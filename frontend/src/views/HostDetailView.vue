@@ -105,7 +105,13 @@
 
         <!-- ============ 模型与 Slot 区 ============ -->
         <section>
-          <div class="section-title">模型与 Slot</div>
+          <div class="section-title">模型与 Slot
+            <span v-if="models.length > 1" class="model-switch mono">
+              <button v-for="(m, idx) in models" :key="idx" :class="{ on: activeModelIdx === idx }" @click="activeModelIdx = idx">
+                {{ m.name || m.path?.split('/').pop() }}
+              </button>
+            </span>
+          </div>
           <div class="model-grid">
             <ModelInfoCard :model="model" />
             <SlotTable :slots="slots" />
@@ -203,7 +209,14 @@ const sshOk = computed(() => !!(snap.value && snap.value.host_metrics.reachable)
 // snap 未就绪时为 null，不写入，避免切换视图瞬间标题闪回 0。
 const hostSpeed = computed(() => (snap.value ? (llama.value.gen_speed_tps || 0) : null))
 watch(hostSpeed, (v) => { if (v !== null) globalSpeed.value = v }, { immediate: true })
-const model = computed(() => llama.value.model || {})
+
+// 多模型支持
+const models = computed(() => llama.value.models || [])
+const activeModelIdx = ref(0)
+const model = computed(() => {
+  const m = models.value[activeModelIdx.value] || (llama.value.model || {})
+  return m
+})
 const modelName = computed(() => (model.value.name || model.value.path || '').split('/').pop())
 const modelTitle = computed(() => model.value.name || model.value.path || '')
 const offlineNote = computed(() =>
@@ -611,6 +624,27 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid rgba(143, 163, 200, 0.12);
 }
 .trend-group:first-child { margin-top: -4px; }
+.model-switch {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: 12px;
+  padding: 2px 0;
+}
+.model-switch button {
+  background: transparent;
+  border: 1px solid var(--card-border);
+  color: var(--text-dim);
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.model-switch button.on {
+  color: var(--cyan);
+  border-color: rgba(0, 229, 255, 0.5);
+  background: rgba(0, 229, 255, 0.08);
+}
 @media (max-width: 1500px) {
   .gpu-grid { grid-template-columns: 1fr; }
   .model-grid { grid-template-columns: 1fr; }

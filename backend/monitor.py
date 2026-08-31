@@ -37,8 +37,14 @@ class HostMonitor:
         self.ring_llama = RingBuffer(global_cfg.llama_points)
         self.ring_host = RingBuffer(global_cfg.host_points)
         self.ssh = SshConnection(cfg.ssh, self.events, cfg.id)
-        # 支持多端口：每个 llama 配置创建一个 LlamaPoller
-        self.llamas: List[LlamaPoller] = [LlamaPoller(cfg, self.events) for cfg in cfg.llama]
+        # 支持多端口：为每个 LlamaCfg 创建 LlamaPoller
+        self.llamas: List[LlamaPoller] = []
+        for llama_cfg in cfg.llama:
+            # 创建临时 HostConfig 副本，覆盖 llama 字段
+            import copy
+            temp_cfg = copy.copy(cfg)
+            temp_cfg.llama = llama_cfg  # 替换为单个 LlamaCfg
+            self.llamas.append(LlamaPoller(temp_cfg, self.events))
         self.ssh_poller = SshPoller(cfg, self.ssh, self.diff, self.ring_host, self.events)
         self.log_poller = LogPoller(cfg, self.ssh, self.events, self.ring_llama)
         self._tasks: List[asyncio.Task] = []

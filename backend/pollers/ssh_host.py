@@ -73,20 +73,15 @@ awk '$3 ~ /^(sd|vd|nvme)/ && $3 !~ /p[0-9]+$/ && $3 !~ /^[sv]d[a-z]+[0-9]+$/ {{p
 echo ==DF==
 df -B1 --output=source,target,size,used,avail,pcent {df_mounts} 2>/dev/null
 echo ==PROC==
-# 使用 ps 查找所有 llama-server 进程，保存 PID 列表
-ps -eo pid=,args= | grep "{process_name}" | grep -v grep | awk '{{print $1}}' > /tmp/_pids_$$
-# 逐个处理 PID
-while read _p; do
-  if [ -n "$_p" ]; then
-    echo P:$_p
-    awk '{{print $14, $15, $23}}' /proc/$_p/stat 2>/dev/null
-    grep -E '^(VmRSS|VmSize|Threads)' /proc/$_p/status 2>/dev/null
-    ps -o pcpu=,pmem=,etime= -p $_p 2>/dev/null
-    tr '\0' ' ' < /proc/$_p/cmdline 2>/dev/null
-    echo ==PROC_END==
-  fi
-done < /tmp/_pids_$$
-rm -f /tmp/_pids_$$
+# 使用 ps 查找所有 llama-server 进程
+for _p in $(ps -eo pid=,args= | grep "{process_name}" | grep -v grep | awk '{{print $1}}'); do
+  echo P:$_p
+  awk '{{print $14, $15, $23}}' /proc/$_p/stat 2>/dev/null
+  grep -E '^(VmRSS|VmSize|Threads)' /proc/$_p/status 2>/dev/null
+  ps -o pcpu=,pmem=,etime= -p $_p 2>/dev/null
+  tr '\0' ' ' < /proc/$_p/cmdline 2>/dev/null
+  echo ==PROC_END==
+done
 echo ==PS==
 ps -eo pid,comm,pcpu,pmem,rss --no-headers 2>/dev/null
 echo ==PSTICKS==

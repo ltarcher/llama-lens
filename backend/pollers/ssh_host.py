@@ -470,23 +470,27 @@ def parse_win_proc(section: str, diff: DiffEngine, ts: float, host_id: str) -> D
         return proc
 
     try:
-        pid = _i(lines[0], 0)
+        # 第一行：P:PID
+        pid_str = lines[0].strip()
+        if pid_str.startswith("P:"):
+            pid = _i(pid_str[2:], 0)
+        else:
+            pid = _i(pid_str, 0)
         if pid <= 0:
             return proc
 
         proc["found"] = True
         proc["pid"] = pid
 
-        # 第二行：CPU秒数 RSS内存秒数
+        # 第二行：CPU秒数 RSS_字节 TotalProcessorTime_秒
         if len(lines) >= 2:
             parts = lines[1].split()
             if len(parts) >= 2:
                 cpu_seconds = _f(parts[0], 0)
-                rss_kb = _f(parts[1], 0)
-                proc["vsz_mb"] = int(rss_kb) // 1024
-                # 使用 CPU 秒数计算实时 CPU%（简化处理）
-                proc["cpu_pct_realtime"] = 0.0  # Windows 需要特殊处理
-
+                rss_bytes = _f(parts[1], 0)
+                proc["vsz_mb"] = int(rss_bytes / 1024 / 1024)  # 字节转 MB
+                proc["cpu_pct_realtime"] = cpu_seconds  # 累计CPU秒数
+        
         # 第三行：运行时间
         if len(lines) >= 3:
             proc["elapsed"] = lines[2].strip()
@@ -970,8 +974,8 @@ class SshPoller:
                 ("LOAD", 'powershell -NoProfile -NonInteractive -Command "$proc = Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor | Where-Object {$_.Name -eq \'_total\'}; $proc.PercentProcessorTime"'),
                 ("DISK", 'powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_LogicalDisk -Filter DriveType=3 | Select-Object DeviceID,Size,FreeSpace | ConvertTo-Json -Compress"'),
                 ("NET", 'powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_PerfFormattedData_Tcpip_NetworkInterface | Select-Object Name,CurrentBandwidth,BytesTotalPerSec | ConvertTo-Json -Compress"'),
-                ("PROC", f'powershell -NoProfile -NonInteractive -Command "$proc = Get-Process -Name {self.cfg.process_name} -ErrorAction SilentlyContinue | Sort-Object WorkingSet64 -Descending | Select-Object -First 1; if ($proc) {{ Write-Host (\'P:\' + $proc.Id); Write-Host (\' {0} {1} {2} \' -f $proc.CPU, $proc.WorkingSet64, $proc.TotalProcessorTime.TotalSeconds); Write-Host $proc.TotalProcessorTime.ToString(\'hh\\:mm\\:ss\') }}"'),
-                ("PS", "powershell -NoProfile -NonInteractive -Command \"Get-Process | Where-Object {$_ .Id -ne $PID} | Select-Object Id,ProcessName,CPU,WorkingSet64 | Sort-Object CPU -Descending | Select-Object -First 50 | ForEach-Object {\' {0} {1} {2} {3} \' -f $_.Id, $_.ProcessName, [math]::Round($_.CPU,2), [math]::Round($_.WorkingSet64/1MB,2)}\""),
+                ("PROC", f'powershell -NoProfile -NonInteractive -Command "$proc = Get-Process -Name {self.cfg.process_name} -ErrorAction SilentlyContinue | Sort-Object WorkingSet64 -Descending | Select-Object -First 1; if ($proc) {{ $cpu = [math]::Round($proc.CPU, 2); $rss = $proc.WorkingSet64; $ticks = [math]::Round($proc.TotalProcessorTime.TotalSeconds, 2); Write-Host (\'P:\' + $proc.Id); Write-Host ($cpu.ToString() + \' \' + $rss.ToString() + \' \' + $ticks.ToString()); Write-Host $proc.TotalProcessorTime.ToString(\'hh\\:mm\\:ss\') }}"'),
+                ("PS", 'powershell -NoProfile -NonInteractive -Command "Get-Process | Where-Object {$_.Id -ne $PID} | Select-Object Id,ProcessName,CPU,WorkingSet64 | Sort-Object CPU -Descending | Select-Object -First 50 | ForEach-Object {[string]$cpu = [math]::Round($_.CPU,2); [string]$rss = [math]::Round($_.WorkingSet64/1MB,2); Write-Host ($_.Id.ToString() + \' \' + $_.ProcessName + \' \' + $cpu + \' \' + $rss)}"'),
                 ("SERVICE", f'powershell -NoProfile -NonInteractive -Command "Get-Service -Name {self.cfg.systemd_unit} -ErrorAction SilentlyContinue | Select-Object Name,DisplayName,Status,StartTime | ConvertTo-Json -Compress"'),
                 ("MODELS", f'powershell -NoProfile -NonInteractive -Command "$proc = Get-Process -Name {self.cfg.process_name} -ErrorAction SilentlyContinue | Sort-Object WorkingSet64 -Descending | Select-Object -First 1; if ($proc) {{ Write-Host $proc.GetCommandLine() }}"'),
             ]
@@ -985,8 +989,6 @@ class SshPoller:
                             out_parts.append(f"=={section_name}==")
                             out_parts.append(out_text)
                             section_names.append(section_name)
-                except Exception as e:
-                    log.warning("[%s] [%s] 命令执行失败: %s", self.host_id, section_name, e)
             out_str = "\n".join(out_parts)
         else:
             # Linux: 单条命令执行

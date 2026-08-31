@@ -2,7 +2,7 @@
   <header class="brandbar">
     <div class="brand">
       <span class="logo">◉</span>
-      <span class="name">LlamaLens</span>
+      <span class="name">llama灵境</span>
       <span class="sub">llama-server 实时监控</span>
     </div>
     <div class="stats mono">

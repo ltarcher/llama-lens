@@ -1,6 +1,6 @@
-# LlamaLens
+# llama灵境
 
-llama.cpp llama-server 多主机实时监控面板。
+llama.cpp llama-server 多主机实时监控面板（英文名：LlamaLens）。
 
 - **门户页**：所有主机状态一览（状态/模型/token 速度/GPU/CPU/内存）
 - **单主机详情**：token 速度 / GPU 按卡聚合 / CPU（每核）/ 内存 / 磁盘 / 网络 / 进程 / 模型 / Slot / 事件流，80+ 数据项
@@ -73,7 +73,7 @@ cp .env.example .env                              # 填写 SSH 密码
 docker compose up -d --build                      # http://<主机>:8000
 ```
 
-详细步骤见下文[使用教程](#使用教程)。
+详细步骤见下文[使用教程](#使用教程)（含被监控主机的 systemd 配置）。
 
 ## 使用教程
 
@@ -181,9 +181,94 @@ hosts:
       mtp: { warn: 75, danger: 60 }
 ```
 
-### 2. 部署
+### 2. 准备被监控主机（llama-server systemd 配置）
 
-#### 2.1 原生部署
+面板对被监控主机的采集走三条通道（全部只读），主机侧满足对应条件才能被完整采集：
+
+| 通道 | 采集内容 | 主机侧条件 |
+|---|---|---|
+| llama-server HTTP API（`llama.host:llama.port`，默认 8080） | `/slots`（1s）、`/props`、`/v1/models`（30s）：在线状态、Slot、上下文、模型信息 | llama-server 监听面板可达的地址:端口 |
+| SSH 批量只读命令（2s） | CPU/内存/磁盘/网络/GPU/进程，`systemctl show <unit>` 服务状态 | SSH 可达；进程名 = `process.name`；unit 名 = `systemd_unit` |
+| SSH journal 流（`journalctl -u <unit> -f`） | 实时任务状态、token 速度、MTP 接受率、上下文占用 | 日志进 systemd journal（默认行为）；unit 名 = `log.unit` |
+
+**四个硬性条件（均可通过 hosts.yaml 配置适配，以下为默认值）**
+
+1. **进程名与 `process.name` 一致**（默认 `llama-server`）：SSH 采集用 `pgrep -x` 精确匹配。二进制不叫 `llama-server`（如 `llama-server-turbo`）时无需改名，在 hosts.yaml 设 `process.name: llama-server-turbo` 即可。
+2. **systemd unit 名与配置一致**：`systemd_unit`（默认 `llama-server.service`，供 `systemctl show` 采集服务状态）与 `log.unit`（默认 `llama-server`，供 `journalctl -u` 采集日志）。unit 不叫 `llama-server.service`（如 `my-llama.service`）时，把这两个字段同步改为实际 unit 名。
+3. **llama-server 监听面板可达的地址:端口**：面板跨主机直连 API，需 `--host 0.0.0.0 --port 8080`（或面板可达的网卡地址），与 hosts.yaml 的 `llama.host`/`llama.port` 一致。
+4. **日志进 journal，不要重定向到文件**：systemd 默认把服务 stdout/stderr 写入 journal，`journalctl -u <unit>` 即可读到；确需写文件时改用 `log.source: file` + `log.path`（见本节末尾）。
+
+**配置步骤（在被监控主机上执行）**
+
+1. 安装 llama.cpp，得到 `llama-server` 二进制（文件名保持 `llama-server`）。
+2. 创建 `/etc/systemd/system/llama-server.service`（路径/参数按实际修改）：
+
+```ini
+[Unit]
+Description=llama.cpp llama-server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=llama
+WorkingDirectory=/opt/llama.cpp
+ExecStart=/opt/llama.cpp/build/bin/llama-server \
+  -m /share/AI/LLM/unsloth/Qwen3.8-27B-Q6_K.gguf \
+  --n-gpu-layers all \
+  --ctx-size 262144 \
+  --host 0.0.0.0 \
+  --port 8080
+Restart=always
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+```
+
+3. 加载并开机自启：
+
+```bash
+systemctl daemon-reload
+systemctl enable --now llama-server
+```
+
+**unit 文件要点**
+
+- `ExecStart` 用二进制绝对路径；推理参数（模型、GPU 层数、ctx 等）按实际填写，面板会自动解析完整命令行并在进程区展示参数表。
+- `Restart=always`：崩溃或重启后自动拉起；面板检测到 PID 变化会自动重置状态机并补拉启动日志，无需人工干预。
+- 不要加 `StandardOutput=file:...`（会破坏 journal 日志采集）。
+- `User=` 可选：非 root 运行时该用户需对模型文件有读权限；SSH 采集账号（`ssh.user`，默认 root）与服务运行用户无关，只需只读权限。
+- 安全提示：llama-server API 无鉴权，`--host 0.0.0.0` 会暴露到局域网，请确保网络可信或用防火墙限制来源 IP。
+
+**验证（被监控主机上）**
+
+```bash
+systemctl status llama-server        # active (running)
+pgrep -x llama-server                # 有 PID 输出（进程名精确匹配）
+curl http://127.0.0.1:8080/health    # {"status":"ok"}
+journalctl -u llama-server -n 20     # 可见 "listening on http://0.0.0.0:8080"
+```
+
+> 以上命令按默认名书写；若进程名/unit 名有自定义，替换为 hosts.yaml 中配置的值。
+
+**验证（面板侧）**
+
+```bash
+curl http://<面板主机>:8000/api/health
+# {"status":"ok","hosts":{"ai":{"llama_online":true,"ssh_ok":true}}}
+```
+
+`llama_online=true` 表示 API 通道通；`ssh_ok=true` 表示 SSH 通道（含 journal 日志流）通。
+
+**非 systemd 环境（可选）**
+
+无 systemd 时（如手动前台运行）：启动时重定向 `llama-server ... >> /var/log/llama-server.log 2>&1`，hosts.yaml 设 `log.source: file` + `log.path: /var/log/llama-server.log`；服务状态（systemd unit）数据将不可用，进程/GPU/系统指标仍正常。
+
+### 3. 部署
+
+#### 3.1 原生部署
 
 前置：Python 3.9+、Node 18+（仅首次构建前端需要）。
 
@@ -206,7 +291,7 @@ cd frontend && npm install && npm run build && cd ..
 - 换端口：`PORT=9000 ./run.sh`
 - 日志：stdout + `logs/llamalens.log`
 
-#### 2.2 Docker 部署
+#### 3.2 Docker 部署
 
 镜像为多阶段构建（node 构建前端 → python slim 运行后端），
 凭证与主机拓扑不打进镜像，运行时以只读卷挂载：
@@ -246,17 +331,17 @@ docker ps                            # 查看 (healthy) 状态
 - 日志：`docker logs llamalens`，或挂载目录下的 `logs/llamalens.log`
 - 健康检查：镜像内置 HEALTHCHECK（`/api/health`），`docker ps` 可见 (healthy)
 
-### 3. 使用面板
+### 4. 使用面板
 
-#### 3.1 门户页（/）
+#### 4.1 门户页（/）
 
-- 顶部品牌栏：LlamaLens 标识、主机总数 / 在线数
+- 顶部品牌栏：llama灵境 标识、主机总数 / 在线数
 - 主机卡片墙：每卡展示状态点（在线绿脉冲 / 离线红 / SSH 断开黄）、模型名 + 参数量、
   Token 生成速度（大数字 + 60s sparkline）、每 GPU 一条利用率条、CPU / 内存使用
 - 超阈值：红边框 + 红色角标
 - 点击卡片进入详情页；门户页同样实时刷新（1s）
 
-#### 3.2 详情页（/host/:id）
+#### 4.2 详情页（/host/:id）
 
 自上而下 8 个分区：
 
@@ -271,7 +356,7 @@ docker ps                            # 查看 (healthy) 状态
 | 模型与 Slot | 模型卡（名称/路径/ftype/参数量/n_ctx/capabilities 等）+ 每 Slot 一张卡（状态/任务/prompt tokens/已解码/剩余/全量采样参数） |
 | 趋势区 | 12 图 3 组（llama：生成速度/预填充速度/上下文占用/MTP 接受率；GPU：利用率/显存/温度/功耗；系统：CPU/内存/网络/负载），5m/15m/1h 窗口切换 |
 
-#### 3.3 实时刷新控制
+#### 4.3 实时刷新控制
 
 TopBar 下拉：**实时 (WS) / 1s / 2s / 5s / 暂停**
 
@@ -280,18 +365,18 @@ TopBar 下拉：**实时 (WS) / 1s / 2s / 5s / 暂停**
 - 暂停：停止数据请求，页面保留最后数据 + "已暂停"水印，指示点灰色
 - WS 断线自动降级为 HTTP 轮询并提示；自动重连（1s/2s/4s 退避）
 
-#### 3.4 主题切换
+#### 4.4 主题切换
 
 右上角下拉，9 套主题：Aurora 极光（默认）/ Terminal 终端 / Light 浅色 / Monokai / Nord /
 Dracula / Synthwave '84 / Tokyo Night / Matrix。选择保存在浏览器（localStorage），即时生效。
 
-#### 3.5 阈值飘红
+#### 4.5 阈值飘红
 
 - 两级色阶：黄（warn）/ 红（danger），后端评估、前端按级别渲染
 - 效果：数字变色 + 卡片边框发光 + 脉冲动画（danger）；门户卡片红色角标
 - 纯视觉提示，不做通知推送
 
-#### 3.6 降级与空态
+#### 4.6 降级与空态
 
 | 状态 | 展示 |
 |---|---|
@@ -301,21 +386,21 @@ Dracula / Synthwave '84 / Tokyo Night / Matrix。选择保存在浏览器（loca
 | 两者都断 | 全页红色横幅"主机不可达" |
 | 无 GPU / 无进程 / 无 Slot | 对应区域显示空态提示 |
 
-### 4. 运维
+### 5. 运维
 
-#### 4.1 日志
+#### 5.1 日志
 
 - 原生：`logs/llamalens.log`（INFO）+ uvicorn stdout
 - Docker：`docker logs llamalens`，或挂载目录下的 `logs/llamalens.log`
 
-#### 4.2 健康检查
+#### 5.2 健康检查
 
 ```bash
 curl http://<主机>:8000/api/health
 # {"status":"ok","hosts":{"ai":{"llama_online":true,"ssh_ok":true}}}
 ```
 
-#### 4.3 常见问题
+#### 5.3 常见问题
 
 | 现象 | 排查 |
 |---|---|
@@ -326,7 +411,7 @@ curl http://<主机>:8000/api/health
 | 前端 404 / "前端尚未构建" | `cd frontend && npm install && npm run build`（run.sh 会自动构建） |
 | 修改配置不生效 | 配置在启动时加载，需重启：重跑 `./run.sh` 或 `docker compose restart` |
 
-### 5. API 参考
+### 6. API 参考
 
 | 方法 | 路径 | 说明 |
 |---|---|---|

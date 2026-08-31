@@ -316,10 +316,24 @@ class LogPoller:
         """file 模式周期拉取：按字节偏移读新增内容（处理轮转/截断）。"""
         path = self.cfg.log.path or ""
         
+<<<<<<< HEAD
         # 检测是否是 Windows 路径（包含盘符如 C:\ 或 E:\）
         is_windows_path = len(path) >= 2 and path[1] == ':'
         
         if is_windows_path:
+=======
+        # 根据操作系统类型选择命令
+        is_windows = False
+        try:
+            from ..pollers.ssh_host import OSType
+            # 通过 SSH 执行命令检测
+            test_out = await self.ssh.exec_command("uname -s 2>/dev/null")
+            is_windows = test_out is None or "Windows" in test_out or "MINGW" in test_out
+        except:
+            pass
+        
+        if is_windows:
+>>>>>>> 72bec1f2d7ce0e44899f352246807159a05e08ac
             # Windows: 使用 PowerShell 读取文件
             size_cmd = 'powershell -NoProfile -Command "(Get-Item \\"%s\\" -ErrorAction SilentlyContinue).Length" 2>/dev/null' % path.replace('\\', '\\\\')
             size_out = await self.ssh.exec_command(size_cmd)
@@ -352,7 +366,11 @@ class LogPoller:
         self.state["available"] = True
         
         if size > self._file_offset:
+<<<<<<< HEAD
             if is_windows_path:
+=======
+            if is_windows:
+>>>>>>> 72bec1f2d7ce0e44899f352246807159a05e08ac
                 # Windows: 使用 PowerShell 读取文件新增内容
                 read_cmd = 'powershell -NoProfile -Command "$bytes = [System.IO.File]::ReadAllBytes(\\"%s\\"); if ($bytes.Length -gt %d) { [System.Text.Encoding]::UTF8.GetString($bytes[%d..$($bytes.Length-1)]) }" 2>/dev/null' % (
                     path.replace('\\', '\\\\'), self._file_offset, self._file_offset)

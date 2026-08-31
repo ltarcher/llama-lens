@@ -208,10 +208,20 @@ class LogPoller:
         cfg = self.cfg.log
         if cfg.source == "file":
             path = cfg.path or ""
-            if self._last_line_ts is not None:
-                # 重连后补拉最近 200 行防丢行
-                return "tail -n 200 -F %s" % path
-            return "tail -n 0 -F %s" % path
+            # 检测是否是 Windows 路径（包含盘符如 C:\ 或 E:\）
+            is_windows_path = len(path) >= 2 and path[1] == ':'
+            if is_windows_path:
+                # Windows: 使用 PowerShell 的 Get-Content -Wait
+                if self._last_line_ts is not None:
+                    # 重连后读取最后 200 行
+                    return 'powershell -NoProfile -Command "Get-Content \\"%s\\" -Tail 200 -Wait"' % path.replace('\\', '\\\\')
+                return 'powershell -NoProfile -Command "Get-Content \\"%s\\" -Wait"' % path.replace('\\', '\\\\')
+            else:
+                # Linux: 使用 tail -F
+                if self._last_line_ts is not None:
+                    # 重连后补拉最近 200 行防丢行
+                    return "tail -n 200 -F %s" % path
+                return "tail -n 0 -F %s" % path
         elif cfg.source == "windows_eventlog":
             # Windows 事件日志：使用 Get-WinEvent 实时监控
             if self._last_line_ts is not None:
@@ -306,17 +316,10 @@ class LogPoller:
         """file 模式周期拉取：按字节偏移读新增内容（处理轮转/截断）。"""
         path = self.cfg.log.path or ""
         
-        # 根据操作系统类型选择命令
-        is_windows = False
-        try:
-            from ..pollers.ssh_host import OSType
-            # 通过 SSH 执行命令检测
-            test_out = await self.ssh.exec_command("uname -s 2>/dev/null")
-            is_windows = test_out is None or "Windows" in test_out or "MINGW" in test_out
-        except:
-            pass
+        # 检测是否是 Windows 路径（包含盘符如 C:\ 或 E:\）
+        is_windows_path = len(path) >= 2 and path[1] == ':'
         
-        if is_windows:
+        if is_windows_path:
             # Windows: 使用 PowerShell 读取文件
             size_cmd = 'powershell -NoProfile -Command "(Get-Item \\"%s\\" -ErrorAction SilentlyContinue).Length" 2>/dev/null' % path.replace('\\', '\\\\')
             size_out = await self.ssh.exec_command(size_cmd)
@@ -349,7 +352,7 @@ class LogPoller:
         self.state["available"] = True
         
         if size > self._file_offset:
-            if is_windows:
+            if is_windows_path:
                 # Windows: 使用 PowerShell 读取文件新增内容
                 read_cmd = 'powershell -NoProfile -Command "$bytes = [System.IO.File]::ReadAllBytes(\\"%s\\"); if ($bytes.Length -gt %d) { [System.Text.Encoding]::UTF8.GetString($bytes[%d..$($bytes.Length-1)]) }" 2>/dev/null' % (
                     path.replace('\\', '\\\\'), self._file_offset, self._file_offset)

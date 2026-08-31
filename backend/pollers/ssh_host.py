@@ -46,22 +46,9 @@ grep -m1 'cpu MHz' /proc/cpuinfo | awk '{print $4}'
 echo ==END==
 """
 
-# Windows 静态信息命令
-STATIC_CMD_WINDOWS = r"""
-echo ==HOSTNAME==
-hostname
-echo ==KERNEL==
-wmic os get BuildNumber /value 2>nul | find "="
-echo ==OS==
-wmic os get Caption /value 2>nul | find "="
-echo ==CPUMODEL==
-wmic cpu get Name /value 2>nul | find "="
-echo ==CORES==
-wmic cpu get NumberOfCores /value 2>nul | find "="
-echo ==MHZ==
-wmic cpu get MaxClockSpeed /value 2>nul | find "="
-echo ==END==
-"""
+# Windows 静态信息命令（使用 bash + PowerShell）
+# 注意：在 bash 中执行 PowerShell 命令时，| 会被解释为管道符，需要使用单引号包裹
+STATIC_CMD_WINDOWS = r"bash -c 'echo ==HOSTNAME== && hostname && echo ==KERNEL== && powershell -NoProfile -NonInteractive -Command \"Get-CimInstance Win32_OperatingSystem | Select-Object -ExpandProperty BuildNumber\" && echo ==OS== && powershell -NoProfile -NonInteractive -Command \"Get-CimInstance Win32_OperatingSystem | Select-Object -ExpandProperty Caption\" && echo ==CPUMODEL== && powershell -NoProfile -NonInteractive -Command \"Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty Name\" && echo ==CORES== && powershell -NoProfile -NonInteractive -Command \"Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty NumberOfCores\" && echo ==MHZ== && powershell -NoProfile -NonInteractive -Command \"Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty MaxClockSpeed\" && echo ==END=='"
 
 # Linux 批量采集命令
 BATCH_CMD_LINUX = r"""
@@ -109,34 +96,36 @@ fi
 echo ==END==
 """
 
-# Windows 批量采集命令（PowerShell）
-BATCH_CMD_WINDOWS = r"""
-echo ==GPU==
-nvidia-smi --query-gpu=index,name,driver_version,memory.total,memory.used,memory.free,utilization.gpu,utilization.memory,temperature.gpu,power.draw,power.limit,fan.speed,clocks.current.graphics,clocks.current.memory,pcie.link.gen.current,pcie.link.width.current,pstate,temperature.memory,ecc.errors.corrected.volatile.total,ecc.errors.uncorrected.volatile.total,clocks_throttle_reasons.active --format=csv,noheader,nounits 2>/dev/null
-echo ==SMI==
-nvidia-smi 2>/dev/null | sed -n 3p
-echo ==APPS==
-nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader,nounits 2>/dev/null
-echo ==CPU==
-powershell -NoProfile -Command "Get-CimInstance Win32_Processor | Select-Object -Property Name,NumberOfCores,NumberOfLogicalProcessors,MaxClockSpeed | ConvertTo-Json -Compress"
-echo ==MEM==
-powershell -NoProfile -Command "$os = Get-CimInstance Win32_OperatingSystem; [math]::Round($os.TotalVisibleMemorySize/1MB,2),[math]::Round(($os.TotalVisibleMemorySize-$os.FreePhysicalMemory)/1MB,2),[math]::Round($os.FreePhysicalMemory/1MB,2)"
-echo ==LOAD==
-powershell -NoProfile -Command "(Get-CimInstance Win32_Processor | Select-Object -Property LoadPercentage)[0].LoadPercentage"
-echo ==DISK==
-powershell -NoProfile -Command "Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object DeviceID,Size,FreeSpace | ConvertTo-Json -Compress"
-echo ==NET==
-powershell -NoProfile -Command "Get-CimInstance Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=True' | Select-Object Caption,BytesReceivedPerSec,BytesSentPerSec | ConvertTo-Json -Compress"
-echo ==PROCS==
-powershell -NoProfile -Command "$proc = Get-Process -Name {process_name} -ErrorAction SilentlyContinue | Sort-Object WorkingSet64 -Descending | Select-Object -First 1; if ($proc) {{ $proc.Id; '{0} {1} {2}' -f $proc.CPU, $proc.WorkingSet64, $proc.TotalProcessorTime.TotalSeconds; $proc.TotalProcessorTime.ToString('hh\:mm\:ss') }}}"
-echo ==PS==
-powershell -NoProfile -Command "Get-Process | Where-Object {{ $_.Id -ne $PID }} | Select-Object Id,ProcessName,CPU,WorkingSet64,StartTime | Sort-Object CPU -Descending | Select-Object -First 50 | ForEach-Object {{ '{0} {1} {2} {3} {4}' -f $_.Id, $_.ProcessName, [math]::Round($_.CPU,2), [math]::Round($_.WorkingSet64/1MB,2), $_.StartTime.ToString('yyyy-MM-dd HH:mm:ss') }}"
-echo ==SERVICE==
-powershell -NoProfile -Command "Get-Service -Name {systemd_unit} -ErrorAction SilentlyContinue | Select-Object Name,DisplayName,Status,StartTime | ConvertTo-Json -Compress"
-echo ==MODELS==
-powershell -NoProfile -Command "$proc = Get-Process -Name {process_name} -ErrorAction SilentlyContinue | Sort-Object WorkingSet64 -Descending | Select-Object -First 1; if ($proc) {{ $proc.GetCommandLine() }}"
-echo ==END==
-"""
+# Windows 批量采集命令（PowerShell，适配 bash shell）
+# 注意：使用 bash -c 包裹所有命令，{process_name} {systemd_unit} {df_mounts} 是 Python 占位符
+# PowerShell 的 {0},{1},{2} 需要用 {{0}},{{1}},{{2}} 转义
+BATCH_CMD_WINDOWS = (
+    'bash -c \'echo ==GPU== && '
+    'nvidia-smi --query-gpu=index,name,driver_version,memory.total,memory.used,memory.free,utilization.gpu,utilization.memory,temperature.gpu,power.draw,power.limit,fan.speed,clocks.current.graphics,clocks.current.memory,pcie.link.gen.current,pcie.link.width.current,pstate,temperature.memory,ecc.errors.corrected.volatile.total,ecc.errors.uncorrected.volatile.total,clocks_throttle_reasons.active --format=csv,noheader,nounits 2>/dev/null && '
+    'echo ==SMI== && '
+    "nvidia-smi 2>/dev/null | sed -n 3p && "
+    'echo ==APPS== && '
+    'nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader,nounits 2>/dev/null && '
+    'echo ==CPU== && '
+    'powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_Processor | Select-Object -Property Name,NumberOfCores,NumberOfLogicalProcessors,MaxClockSpeed | ConvertTo-Json -Compress" && '
+    'echo ==MEM== && '
+    'powershell -NoProfile -NonInteractive -Command "$os = Get-CimInstance Win32_OperatingSystem; \'{0},{1},{2}\' -f [math]::Round($os.TotalVisibleMemorySize/1MB,2),[math]::Round(($os.TotalVisibleMemorySize-$os.FreePhysicalMemory)/1MB,2),[math]::Round($os.FreePhysicalMemory/1MB,2)" && '
+    'echo ==LOAD== && '
+    'powershell -NoProfile -NonInteractive -Command "(Get-CimInstance Win32_Processor | Select-Object -Property LoadPercentage)[0].LoadPercentage" && '
+    "echo ==DISK== && "
+    "powershell -NoProfile -NonInteractive -Command \"Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object DeviceID,Size,FreeSpace | ConvertTo-Json -Compress\" && "
+    "echo ==NET== && "
+    "powershell -NoProfile -NonInteractive -Command \"Get-CimInstance Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=True' | Select-Object Caption,BytesReceivedPerSec,BytesSentPerSec | ConvertTo-Json -Compress\" && "
+    'echo ==PROC== && '
+    'powershell -NoProfile -NonInteractive -Command "$proc = Get-Process -Name {process_name} -ErrorAction SilentlyContinue | Sort-Object WorkingSet64 -Descending | Select-Object -First 1; if ($proc) {{ Write-Host (\'P:\' + $proc.Id); Write-Host (\'{0} {1} {2}\' -f $proc.CPU, $proc.WorkingSet64, $proc.TotalProcessorTime.TotalSeconds); Write-Host $proc.TotalProcessorTime.ToString(\'hh\\\\:mm\\\\:ss\') }}" && '
+    'echo ==PS== && '
+    "powershell -NoProfile -NonInteractive -Command \"Get-Process | Where-Object {{ $_.Id -ne $PID }} | Select-Object Id,ProcessName,CPU,WorkingSet64 | Sort-Object CPU -Descending | Select-Object -First 50 | ForEach-Object {{ '{0} {1} {2} {3}' -f $_.Id, $_.ProcessName, [math]::Round($_.CPU,2), [math]::Round($_.WorkingSet64/1MB,2) }}\" && "
+    'echo ==SERVICE== && '
+    'powershell -NoProfile -NonInteractive -Command "Get-Service -Name {systemd_unit} -ErrorAction SilentlyContinue | Select-Object Name,DisplayName,Status,StartTime | ConvertTo-Json -Compress" && '
+    'echo ==MODELS== && '
+    'powershell -NoProfile -NonInteractive -Command "$proc = Get-Process -Name {process_name} -ErrorAction SilentlyContinue | Sort-Object WorkingSet64 -Descending | Select-Object -First 1; if ($proc) {{ Write-Host $proc.GetCommandLine() }}" && '
+    'echo ==END==\''
+)
 
 # 默认使用 Linux 命令
 STATIC_CMD = STATIC_CMD_LINUX
@@ -157,71 +146,6 @@ def _i(x, default=None):
         return int(float(x))
     except (ValueError, TypeError):
         return default
-
-# ---------------------------------------------------------------------------
-# 批量命令模板（占位符：{process_name} {systemd_unit} {df_mounts}）
-# ---------------------------------------------------------------------------
-
-BATCH_CMD = r"""
-echo ==GPU==
-nvidia-smi --query-gpu=index,name,driver_version,memory.total,memory.used,memory.free,utilization.gpu,utilization.memory,temperature.gpu,power.draw,power.limit,fan.speed,clocks.current.graphics,clocks.current.memory,pcie.link.gen.current,pcie.link.width.current,pstate,temperature.memory,ecc.errors.corrected.volatile.total,ecc.errors.uncorrected.volatile.total,clocks_throttle_reasons.active --format=csv,noheader,nounits 2>/dev/null
-echo ==SMI==
-nvidia-smi 2>/dev/null | sed -n 3p
-echo ==APPS==
-nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader,nounits 2>/dev/null
-echo ==STAT==
-cat /proc/stat
-echo ==MEM==
-grep -E '^(MemTotal|MemFree|MemAvailable|Buffers|^Cached|SwapTotal|SwapFree)' /proc/meminfo
-echo ==LOAD==
-cat /proc/loadavg
-echo ==UPTIME==
-cat /proc/uptime
-echo ==NET==
-cat /proc/net/dev
-echo ==DISKIO==
-awk '$3 ~ /^(sd|vd|nvme)/ && $3 !~ /p[0-9]+$/ && $3 !~ /^[sv]d[a-z]+[0-9]+$/ {{print}}' /proc/diskstats
-echo ==DF==
-df -B1 --output=source,target,size,used,avail,pcent {df_mounts} 2>/dev/null
-echo ==PROC==
-PID=$(pgrep -x {process_name} | head -1)
-if [ -n "$PID" ]; then
-  echo P:$PID
-  awk '{{print $14, $15, $23}}' /proc/$PID/stat 2>/dev/null
-  grep -E '^(VmRSS|VmSize|Threads)' /proc/$PID/status 2>/dev/null
-  ps -o pcpu=,pmem=,etime= -p $PID 2>/dev/null
-  tr '\0' ' ' < /proc/$PID/cmdline 2>/dev/null; echo
-fi
-echo ==PS==
-ps -eo pid,comm,pcpu,pmem,rss --no-headers 2>/dev/null
-echo ==PSTICKS==
-awk 'FNR==1 {{ n=split(FILENAME, p, "/"); pid=p[n-1]; i=index($0, ") "); if (i > 0) {{ s=substr($0, i+2); m=split(s, a, " "); if (m >= 13) print pid, a[12], a[13] }} }}' /proc/[0-9]*/stat 2>/dev/null
-echo ==PROCS==
-ls /proc 2>/dev/null | grep -c '^[0-9]'
-echo ==SERVICE==
-systemctl show {systemd_unit} -p Description,ActiveState,SubState,ExecMainStartTimestamp,CPUUsageNSec,MemoryCurrent,MemoryPeak,NTasks 2>/dev/null
-echo ==MODELS==
-if [ -n "$PID" ]; then
-  tr '\0' '\n' < /proc/$PID/cmdline 2>/dev/null | awk 'p=="--model"||p=="-m"||p=="--mmproj"{{print; p=""; next}}{{p=$0}}' | xargs -r -d '\n' ls -l 2>/dev/null
-fi
-echo ==END==
-"""
-
-STATIC_CMD = r"""
-echo ==HOSTNAME==
-hostname
-echo ==KERNEL==
-uname -r
-echo ==OS==
-. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME"
-echo ==CPUMODEL==
-grep -m1 'model name' /proc/cpuinfo | cut -d: -f2 | sed 's/^ *//'
-echo ==CORES==
-grep -c '^processor' /proc/cpuinfo
-echo ==MHZ==
-grep -m1 'cpu MHz' /proc/cpuinfo | awk '{print $4}'
-echo ==END==
-"""
 
 
 # ---------------------------------------------------------------------------
@@ -251,19 +175,19 @@ def detect_os(static_output: str) -> OSType:
     """根据静态命令输出检测操作系统类型。"""
     if not static_output:
         return OSType.UNKNOWN
-    
+
     # 检查是否包含 Windows 特有命令输出
-    windows_indicators = ["Windows", "BuildNumber", "Caption", "wmic"]
+    windows_indicators = ["Windows", "BuildNumber", "Caption", "Microsoft"]
     linux_indicators = ["/etc/os-release", "PRETTY_NAME", "Linux", "uname"]
-    
+
     for indicator in windows_indicators:
         if indicator in static_output:
             return OSType.WINDOWS
-    
+
     for indicator in linux_indicators:
         if indicator in static_output:
             return OSType.LINUX
-    
+
     # 默认假设 Linux
     return OSType.LINUX
 
@@ -415,7 +339,7 @@ def parse_win_cpu(section: str) -> Dict[str, Any]:
     result = {"model": "", "cores": 0, "mhz": 0.0, "usage_pct": 0.0}
     if not section:
         return result
-    
+
     try:
         import json
         data = json.loads(section)
@@ -432,7 +356,7 @@ def parse_win_cpu(section: str) -> Dict[str, Any]:
             result["mhz"] = _f(cpu.get("MaxClockSpeed"), 0.0) / 1000.0
     except (json.JSONDecodeError, ValueError, TypeError):
         pass
-    
+
     return result
 
 
@@ -442,8 +366,8 @@ def parse_win_mem(section: str) -> Dict[str, Any]:
               "swap_total_mb": 0, "swap_used_mb": 0}
     if not section:
         return result
-    
-    fields = section.strip().split()
+
+    fields = section.strip().split(",")
     if len(fields) >= 3:
         try:
             total = _f(fields[0], 0)
@@ -455,7 +379,7 @@ def parse_win_mem(section: str) -> Dict[str, Any]:
             result["available_mb"] = free
         except (ValueError, IndexError):
             pass
-    
+
     return result
 
 
@@ -463,7 +387,7 @@ def parse_win_load(section: str) -> List[float]:
     """解析 Windows 负载（CPU LoadPercentage）。"""
     if not section:
         return [0.0, 0.0, 0.0]
-    
+
     load_pct = _f(section.strip(), 0.0)
     # Windows 只有当前负载，没有 1/5/15 min loadavg
     # 简单映射：当前负载 = 1min load，5min 和 15min 设为相同值
@@ -475,19 +399,19 @@ def parse_win_disk(section: str) -> List[Dict[str, Any]]:
     mounts = []
     if not section:
         return mounts
-    
+
     try:
         import json
         data = json.loads(section)
         disks = data if isinstance(data, list) else [data]
-        
+
         for disk in disks:
             device_id = disk.get("DeviceID", "")
             size_gb = _f(disk.get("Size"), 0) / (1024 ** 3)
             free_gb = _f(disk.get("FreeSpace"), 0) / (1024 ** 3)
             used_gb = size_gb - free_gb
             use_pct = (used_gb / size_gb * 100) if size_gb > 0 else 0.0
-            
+
             mounts.append({
                 "mount": device_id + "\\",
                 "size_gb": size_gb,
@@ -497,7 +421,7 @@ def parse_win_disk(section: str) -> List[Dict[str, Any]]:
             })
     except (json.JSONDecodeError, ValueError, TypeError):
         pass
-    
+
     return mounts
 
 
@@ -506,18 +430,18 @@ def parse_win_net(section: str) -> List[Dict[str, Any]]:
     ifaces = []
     if not section:
         return ifaces
-    
+
     try:
         import json
         data = json.loads(section)
         adapters = data if isinstance(data, list) else [data]
-        
+
         for adapter in adapters:
             name = adapter.get("Caption", "")
             # BytesReceivedPerSec 和 BytesSentPerSec 是实时速率（字节/秒）
             rx_bytes_sec = _f(adapter.get("BytesReceivedPerSec"), 0)
             tx_bytes_sec = _f(adapter.get("BytesSentPerSec"), 0)
-            
+
             ifaces.append({
                 "name": name,
                 "rx_bytes": int(rx_bytes_sec),  # 近似为字节数
@@ -526,7 +450,7 @@ def parse_win_net(section: str) -> List[Dict[str, Any]]:
             })
     except (json.JSONDecodeError, ValueError, TypeError):
         pass
-    
+
     return ifaces
 
 
@@ -535,19 +459,19 @@ def parse_win_proc(section: str, diff: DiffEngine, ts: float, host_id: str) -> D
     proc = {"found": False}
     if not section or not section.strip():
         return proc
-    
+
     lines = [l for l in section.splitlines() if l.strip()]
     if not lines:
         return proc
-    
+
     try:
         pid = _i(lines[0], 0)
         if pid <= 0:
             return proc
-        
+
         proc["found"] = True
         proc["pid"] = pid
-        
+
         # 第二行：CPU秒数 RSS内存秒数
         if len(lines) >= 2:
             parts = lines[1].split()
@@ -557,14 +481,14 @@ def parse_win_proc(section: str, diff: DiffEngine, ts: float, host_id: str) -> D
                 proc["vsz_mb"] = int(rss_kb) // 1024
                 # 使用 CPU 秒数计算实时 CPU%（简化处理）
                 proc["cpu_pct_realtime"] = 0.0  # Windows 需要特殊处理
-                
+
         # 第三行：运行时间
         if len(lines) >= 3:
             proc["elapsed"] = lines[2].strip()
-            
+
     except (ValueError, IndexError):
         pass
-    
+
     return proc
 
 
@@ -573,40 +497,39 @@ def parse_win_ps(section: str) -> List[Dict[str, Any]]:
     procs = []
     if not section:
         return procs
-    
+
     for line in section.strip().splitlines():
         line = line.strip()
         if not line:
             continue
-        # 格式：Id ProcessName CPU(秒) WorkingSetMB(数字) StartTime(日期时间)
+        # 格式：Id ProcessName CPU(秒) WorkingSetMB(数字)
         # 需要更复杂的解析，因为进程名可能含空格
         try:
-            # 从末尾开始解析：最后一个是日期时间，前面是内存(数字)，再前面是CPU(数字)
-            parts = line.rsplit(None, 3)
-            if len(parts) < 4:
+            # 从末尾开始解析：最后一个是内存(数字)，前面是CPU(数字)，再前面是进程名
+            parts = line.rsplit(None, 2)
+            if len(parts) < 3:
                 continue
-            
-            start_time = parts[-1]
-            rss_mb = _f(parts[-2], 0)
-            cpu_seconds = _f(parts[-3], 0)
-            process_name = parts[0]
-            
+
+            rss_mb = _f(parts[-1], 0)
+            cpu_seconds = _f(parts[-2], 0)
+            process_id_name = parts[0]
+
             # 尝试从进程名中提取 PID（第一个令牌）
-            pid_parts = process_name.split(None, 1)
+            pid_parts = process_id_name.split(None, 1)
             pid = _i(pid_parts[0], 0)
             if pid <= 0:
                 continue
-            
+
             procs.append({
                 "pid": pid,
-                "name": pid_parts[1] if len(pid_parts) > 1 else process_name,
+                "name": pid_parts[1] if len(pid_parts) > 1 else process_id_name,
                 "cpu_pct_lifetime": cpu_seconds,  # 累计 CPU 秒数
                 "mem_pct": rss_mb,  # 简化：用 RSS MB
                 "rss_mb": rss_mb,
             })
         except (ValueError, IndexError):
             continue
-    
+
     return procs
 
 
@@ -623,12 +546,12 @@ def parse_win_service(section: str) -> Dict[str, Any]:
     }
     if not section:
         return svc
-    
+
     try:
         import json
         data = json.loads(section)
         services = data if isinstance(data, list) else [data]
-        
+
         for service in services:
             svc["name"] = service.get("Name", "")
             svc["description"] = service.get("DisplayName", "")
@@ -640,7 +563,7 @@ def parse_win_service(section: str) -> Dict[str, Any]:
             break
     except (json.JSONDecodeError, ValueError, TypeError):
         pass
-    
+
     return svc
 
 
@@ -864,7 +787,19 @@ class SshPoller:
         self.ring = ring
         self.events = events
         self.host_id = host_cfg.id
-        self._os_type: OSType = OSType.UNKNOWN
+        
+        # 从配置读取手动指定的 OS 类型
+        if host_cfg.os_type:
+            os_type_lower = host_cfg.os_type.lower()
+            if os_type_lower == "windows":
+                self._os_type: OSType = OSType.WINDOWS
+            elif os_type_lower == "linux":
+                self._os_type: OSType = OSType.LINUX
+            else:
+                self._os_type: OSType = OSType.UNKNOWN
+        else:
+            self._os_type: OSType = OSType.UNKNOWN
+        
         # 共享输出（HostMonitor.snapshot 读取）
         self.metrics: Dict[str, Any] = {
             "reachable": False,
@@ -878,37 +813,110 @@ class SshPoller:
 
     def _build_batch_cmd(self) -> str:
         mounts = self.cfg.disk_mounts or ["/"]
-        
+
         # 根据 OS 类型选择命令模板
         if self._os_type == OSType.WINDOWS:
-            cmd_template = BATCH_CMD_WINDOWS
+            # Windows: 逐条命令执行，不需要 .format()
+            return "windows"
         elif self._os_type == OSType.LINUX:
             cmd_template = BATCH_CMD_LINUX
+            return cmd_template.format(
+                process_name=self.cfg.process_name,
+                systemd_unit=self.cfg.systemd_unit,
+                df_mounts=" ".join(mounts),
+            )
         else:
             # 未知 OS，尝试 Linux（默认）
             cmd_template = BATCH_CMD_LINUX
-        
-        return cmd_template.format(
-            process_name=self.cfg.process_name,
-            systemd_unit=self.cfg.systemd_unit,
-            df_mounts=" ".join(mounts),
-        )
+            return cmd_template.format(
+                process_name=self.cfg.process_name,
+                systemd_unit=self.cfg.systemd_unit,
+                df_mounts=" ".join(mounts),
+            )
 
     async def _collect_static(self) -> None:
-        cmd = STATIC_CMD_LINUX if self._os_type == OSType.LINUX else STATIC_CMD_WINDOWS
-        if self._os_type == OSType.UNKNOWN:
-            cmd = STATIC_CMD_LINUX  # 首次尝试 Linux
+        # 如果已指定 OS 类型，使用对应命令
+        if self._os_type == OSType.LINUX:
+            cmd = STATIC_CMD_LINUX
+            out = await self.ssh.exec_command(cmd)
+        elif self._os_type == OSType.WINDOWS:
+            # Windows: 拆分为多个单行命令执行（多行命令在 Windows OpenSSH bash 中不可靠）
+            out_parts = []
+            commands = [
+                "echo ==HOSTNAME==",
+                "hostname",
+                "echo ==KERNEL==",
+                'powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_OperatingSystem | Select-Object -ExpandProperty BuildNumber"',
+                "echo ==OS==",
+                'powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_OperatingSystem | Select-Object -ExpandProperty Caption"',
+                "echo ==CPUMODEL==",
+                'powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty Name"',
+                "echo ==CORES==",
+                'powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty NumberOfCores"',
+                "echo ==MHZ==",
+                'powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty MaxClockSpeed"',
+                "echo ==END==",
+            ]
+            for c in commands:
+                try:
+                    out_text = await self.ssh.exec_command(c)
+                    if out_text:
+                        out_text = out_text.strip()
+                        if out_text:
+                            out_parts.append(out_text)
+                except Exception:
+                    pass
+            out = "\n".join(out_parts)
+            log.info("[%s] Windows 静态命令原始输出: %s", self.host_id, repr(out[:200]))
+        else:
+            # 未知 OS，先尝试 Linux
+            cmd = STATIC_CMD_LINUX
+            out = await self.ssh.exec_command(cmd)
+            if out:
+                # exec_command 已经返回字符串，不需要 .read()
+                out_text = out if isinstance(out, str) else out.read().decode('utf-8', errors='replace')
+                detected = detect_os(out_text)
+                if detected == OSType.UNKNOWN:
+                    # Linux 命令返回空，尝试 Windows 命令
+                    log.info("[%s] Linux 静态命令无输出，尝试 Windows 命令", self.host_id)
+                    # 使用拆分命令方式
+                    out_parts = []
+                    commands = [
+                        "echo ==HOSTNAME==",
+                        "hostname",
+                        "echo ==KERNEL==",
+                        'powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_OperatingSystem | Select-Object -ExpandProperty BuildNumber"',
+                        "echo ==OS==",
+                        'powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_OperatingSystem | Select-Object -ExpandProperty Caption"',
+                        "echo ==END==",
+                    ]
+                    for c in commands:
+                        try:
+                            out_w = await self.ssh.exec_command(c)
+                            if out_w:
+                                out_text_w = out_w if isinstance(out_w, str) else out_w.read().decode('utf-8', errors='replace')
+                                if out_text_w:
+                                    out_parts.append(out_text_w.strip())
+                        except Exception:
+                            pass
+                    out_text = "\n".join(out_parts)
+                    detected = detect_os(out_text)
+            
+            if self._os_type == OSType.UNKNOWN:
+                self._os_type = detected
+                log.info("[%s] 检测到操作系统: %s", self.host_id, self._os_type.value)
         
-        out = await self.ssh.exec_command(cmd)
         if out is None:
             return
         
-        # 检测 OS 类型（如果不是未知）
-        if self._os_type == OSType.UNKNOWN:
-            self._os_type = detect_os(out)
-            log.info("[%s] 检测到操作系统: %s", self.host_id, self._os_type.value)
+        # out 已经是字符串（exec_command 返回的）
+        if isinstance(out, str):
+            out_str = out
+        else:
+            out_str = out.read().decode('utf-8', errors='replace') if hasattr(out, 'read') else str(out)
         
-        sec = split_sections(out)
+        # 解析分段输出
+        sec = split_sections(out_str)
         sysinfo = self.metrics["sys"]
         sysinfo["hostname"] = sec.get("HOSTNAME", "").strip()
         sysinfo["kernel"] = sec.get("KERNEL", "").strip()
@@ -939,17 +947,66 @@ class SshPoller:
 
     async def _cycle(self) -> None:
         ts = time.time()
-        out = await self.ssh.exec_command(self._build_batch_cmd())
-        if out is None:
-            self.metrics["reachable"] = False
-            return
+        log.info("[%s] 开始采集周期 (OS: %s)", self.host_id, self._os_type.value)
+        
+        # 检查是否是 Windows（需要逐条命令执行）
+        batch_cmd = self._build_batch_cmd()
+        if batch_cmd == "windows":
+            log.info("[%s] Windows 批量采集：逐条命令执行", self.host_id)
+            # Windows: 逐条命令执行并合并结果
+            out_parts = []
+            commands = [
+                "echo ==GPU==",
+                "nvidia-smi --query-gpu=index,name,driver_version,memory.total,memory.used,memory.free,utilization.gpu,utilization.memory,temperature.gpu,power.draw,power.limit,fan.speed,clocks.current.graphics,clocks.current.memory,pcie.link.gen.current,pcie.link.width.current,pstate,temperature.memory,ecc.errors.corrected.volatile.total,ecc.errors.uncorrected.volatile.total,clocks_throttle_reasons.active --format=csv,noheader,nounits 2>/dev/null",
+                "echo ==SMI==",
+                "nvidia-smi 2>/dev/null | sed -n 3p",
+                "echo ==APPS==",
+                "nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader,nounits 2>/dev/null",
+                "echo ==CPU==",
+                'powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_Processor | Select-Object -Property Name,NumberOfCores,NumberOfLogicalProcessors,MaxClockSpeed | ConvertTo-Json -Compress"',
+                "echo ==MEM==",
+                'powershell -NoProfile -NonInteractive -Command "$os = Get-CimInstance Win32_OperatingSystem; \' {0},{1},{2} \' -f [math]::Round($os.TotalVisibleMemorySize/1MB,2),[math]::Round(($os.TotalVisibleMemorySize-$os.FreePhysicalMemory)/1MB,2),[math]::Round($os.FreePhysicalMemory/1MB,2)"',
+                "echo ==LOAD==",
+                'powershell -NoProfile -NonInteractive -Command "(Get-CimInstance Win32_Processor | Select-Object -Property LoadPercentage)[0].LoadPercentage"',
+                "echo ==DISK==",
+                "powershell -NoProfile -NonInteractive -Command \"Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object DeviceID,Size,FreeSpace | ConvertTo-Json -Compress\"",
+                "echo ==NET==",
+                "powershell -NoProfile -NonInteractive -Command \"Get-CimInstance Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=True' | Select-Object Caption,BytesReceivedPerSec,BytesSentPerSec | ConvertTo-Json -Compress\"",
+                "echo ==PROC==",
+                f'powershell -NoProfile -NonInteractive -Command "$proc = Get-Process -Name {self.cfg.process_name} -ErrorAction SilentlyContinue | Sort-Object WorkingSet64 -Descending | Select-Object -First 1; if ($proc) {{ Write-Host (\'P:\' + $proc.Id); Write-Host (\' {0} {1} {2} \' -f $proc.CPU, $proc.WorkingSet64, $proc.TotalProcessorTime.TotalSeconds); Write-Host $proc.TotalProcessorTime.ToString(\'hh\\:mm\\:ss\') }}"',
+                "echo ==PS==",
+                "powershell -NoProfile -NonInteractive -Command \"Get-Process | Where-Object {$_ .Id -ne $PID} | Select-Object Id,ProcessName,CPU,WorkingSet64 | Sort-Object CPU -Descending | Select-Object -First 50 | ForEach-Object {\' {0} {1} {2} {3} \' -f $_.Id, $_.ProcessName, [math]::Round($_.CPU,2), [math]::Round($_.WorkingSet64/1MB,2)}\"",
+                "echo ==SERVICE==",
+                f'powershell -NoProfile -NonInteractive -Command "Get-Service -Name {self.cfg.systemd_unit} -ErrorAction SilentlyContinue | Select-Object Name,DisplayName,Status,StartTime | ConvertTo-Json -Compress"',
+                "echo ==MODELS==",
+                f'powershell -NoProfile -NonInteractive -Command "$proc = Get-Process -Name {self.cfg.process_name} -ErrorAction SilentlyContinue | Sort-Object WorkingSet64 -Descending | Select-Object -First 1; if ($proc) {{ Write-Host $proc.GetCommandLine() }}"',
+                "echo ==END==",
+            ]
+            for c in commands:
+                try:
+                    out_text = await self.ssh.exec_command(c)
+                    if out_text:
+                        out_text = out_text.strip()
+                        if out_text:
+                            out_parts.append(out_text)
+                except Exception:
+                    pass
+            out_str = "\n".join(out_parts)
+        else:
+            # Linux: 单条命令执行
+            out = await self.ssh.exec_command(batch_cmd)
+            if out is None:
+                self.metrics["reachable"] = False
+                return
+            out_str = out if isinstance(out, str) else out.read().decode('utf-8', errors='replace')
+        
         self.metrics["reachable"] = True
-        sec = split_sections(out)
+        sec = split_sections(out_str)
         self._parse_cycle(sec, ts)
 
     def _parse_cycle(self, sec: Dict[str, str], ts: float) -> None:
         m = self.metrics
-        
+
         # GPU + APPS（Linux 和 Windows 通用）
         gpus = parse_gpu(sec.get("GPU", ""))
         apps = parse_apps(sec.get("APPS", ""))
@@ -958,7 +1015,7 @@ class SshPoller:
             g["apps"] = apps
             g["cuda"] = cuda_ver
         m["gpus"] = gpus
-        
+
         # CPU（根据 OS 类型选择解析器）
         cpu = m["cpu"]
         if self._os_type == OSType.WINDOWS:
@@ -980,13 +1037,13 @@ class SshPoller:
                 per_core.append(self.diff.cpu_pct("cpu:%s:%d" % (self.host_id, i), ts, total, idle))
             cpu["per_core_pct"] = per_core
             cpu["load"] = parse_loadavg(sec.get("LOAD", ""))
-        
+
         # 内存（根据 OS 类型选择解析器）
         if self._os_type == OSType.WINDOWS:
             m["mem"] = parse_win_mem(sec.get("MEM", ""))
         else:
             m["mem"] = parse_meminfo(sec.get("MEM", ""))
-        
+
         # 磁盘（df + diskstats 差分）
         if self._os_type == OSType.WINDOWS:
             # Windows 磁盘信息来自 ==DISK== 段
@@ -1003,7 +1060,7 @@ class SshPoller:
                 "read_mb_s": (self.diff.bytes_rate("diskr:%s" % self.host_id, ts, diskio["sectors_read"]) or 0) * 512 / 1024 / 1024,
                 "write_mb_s": (self.diff.bytes_rate("diskw:%s" % self.host_id, ts, diskio["sectors_written"]) or 0) * 512 / 1024 / 1024,
             }
-        
+
         # 网络（差分）
         if self._os_type == OSType.WINDOWS:
             # Windows 网络是实时速率，不是累计值
@@ -1033,13 +1090,13 @@ class SshPoller:
                     "tx_total_mb": itf["tx_bytes"] / 1024 / 1024,
                 })
             m["net"] = {"ifaces": net_out}
-        
+
         # 进程
         if self._os_type == OSType.WINDOWS:
             m["process"] = parse_win_proc(sec.get("PROC", ""), self.diff, ts, self.host_id)
         else:
             m["process"] = parse_proc(sec.get("PROC", ""), self.diff, ts, self.host_id)
-        
+
         # Top 进程
         if self._os_type == OSType.WINDOWS:
             procs = parse_win_ps(sec.get("PS", ""))
@@ -1072,7 +1129,7 @@ class SshPoller:
             for r in top_cpu + top_mem:
                 r.pop("_ticks", None)
             m["top"] = {"cpu": top_cpu, "mem": top_mem}
-        
+
         # 系统（uptime + procs，合并静态信息）
         if self._os_type == OSType.WINDOWS:
             # Windows 没有直接的 uptime，使用负载值占位
@@ -1081,14 +1138,14 @@ class SshPoller:
         else:
             m["sys"]["uptime_s"] = parse_uptime(sec.get("UPTIME", ""))
             m["sys"]["procs"] = _i(sec.get("PROCS", "").strip(), 0)
-        
+
         # 服务
         if self._os_type == OSType.WINDOWS:
             m["service"] = parse_win_service(sec.get("SERVICE", ""))
         else:
             m["service"] = parse_service(sec.get("SERVICE", ""))
         m["service"]["unit"] = self.cfg.systemd_unit
-        
+
         # 模型文件体积
         models_section = sec.get("MODELS", "")
         if self._os_type == OSType.WINDOWS and models_section:

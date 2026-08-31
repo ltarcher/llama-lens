@@ -12,8 +12,7 @@ RUN npm run build
 
 # ---- 阶段 2：后端运行时（代码兼容 Python 3.9+，镜像用 3.11 slim）----
 FROM python:3.11-slim
-ENV PYTHONUNBUFFERED=1 \
-    PORT=8000
+ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 COPY backend/requirements.txt ./backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt

@@ -489,7 +489,12 @@ def parse_win_proc(section: str, diff: DiffEngine, ts: float, host_id: str) -> D
                 cpu_seconds = _f(parts[0], 0)
                 rss_bytes = _f(parts[1], 0)
                 proc["vsz_mb"] = int(rss_bytes / 1024 / 1024)  # 字节转 MB
-                proc["cpu_pct_realtime"] = cpu_seconds  # 累计CPU秒数
+                
+                # 使用 DiffEngine 计算实时 CPU 使用率
+                # PowerShell 的 CPU 属性返回的是秒数，我们需要计算差值
+                cpu_pct = diff.process_cpu_pct(
+                    "proc:%s:%d" % (host_id, pid), ts, int(cpu_seconds * 100))  # 转换为百分之一秒
+                proc["cpu_pct_realtime"] = cpu_pct if cpu_pct is not None else 0.0
         
         # 第三行：运行时间
         if len(lines) >= 3:

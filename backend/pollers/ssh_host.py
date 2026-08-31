@@ -989,6 +989,8 @@ class SshPoller:
                             out_parts.append(f"=={section_name}==")
                             out_parts.append(out_text)
                             section_names.append(section_name)
+                except Exception as e:
+                    log.warning("[%s] [%s] 命令执行失败: %s", self.host_id, section_name, e)
             out_str = "\n".join(out_parts)
         else:
             # Linux: 单条命令执行

@@ -118,7 +118,7 @@ class LogCfg:
 class HostConfig:
     id: str
     name: str
-    llama: LlamaCfg
+    llama: List[LlamaCfg]  # 支持多端口
     ssh: SshCfg
     process_name: str = "llama-server"
     log: LogCfg = field(default_factory=LogCfg)
@@ -205,10 +205,19 @@ def _build_host(d: dict, global_t: dict) -> HostConfig:
     if raw_mounts is None:
         raw_mounts = ["/"]
     
+    # 解析 llama 配置：支持单个或多个端口
+    llama_raw = d.get("llama")
+    if isinstance(llama_raw, list):
+        llama_list = [_build_llama(l) for l in llama_raw]
+    elif isinstance(llama_raw, dict):
+        llama_list = [_build_llama(llama_raw)]
+    else:
+        llama_list = []
+    
     return HostConfig(
         id=str(host_id),
         name=d.get("name", host_id),
-        llama=_build_llama(d.get("llama")),
+        llama=llama_list,
         ssh=_build_ssh(d.get("ssh")),
         process_name=process_name,
         log=_build_log(d.get("log")),

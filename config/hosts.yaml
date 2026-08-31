@@ -1,0 +1,87 @@
+# LlamaLens 主机配置模板
+# 用法：cp config/hosts.example.yaml config/hosts.yaml 后填写。
+# config/hosts.yaml 与 .env 均含敏感信息，已被 .gitignore 排除，勿提交。
+
+global:
+  push_interval: 1.0          # WS 推送间隔（秒）
+  history:
+    llama_points: 3600        # llama 序列环形缓冲点数（@1s，3600 = 1h）
+    host_points: 1800         # host 序列环形缓冲点数（@2s，1800 = 1h）
+  # thresholds:               # 全局阈值覆盖（可选，默认见 backend/config.py）
+  #   gpu_util: {warn: 80, danger: 90}
+  #   ctx: {warn: 80, danger: 90}
+
+hosts:
+  - id: ai
+    name: AI 桌面主机 
+    os_type: windows
+    llama:
+      host: 192.168.3.244            # llama-server 地址（支持 IPv6 字面量）
+      port: 8060
+      interval: 1.0           # /health + /slots 轮询间隔（秒）
+      slow_interval: 30.0     # /props + /v1/models 轮询间隔（秒）
+      timeout: 3.0
+    ssh:
+      host: 192.168.3.244
+      port: 22
+      user: Admin
+      password: ${AI_SSH_PASS}    # 引用 .env 中的环境变量
+      # key_path: ~/.ssh/id_ed25519   # 密钥认证（可选，与 password 二选一）
+      interval: 2.0           # 批量只读命令间隔（秒）
+      keepalive: 15
+      timeout: 15.0
+    process:
+      name: llama-server      # 进程名（pgrep -x）
+    systemd_unit: llama-server.service
+    log:
+      source: file            # journal（systemd unit）| file（日志文件，Windows 用这个）
+      # unit: llama-server      # systemd unit 名（source=journal 时生效）
+      # 支持环境变量引用（${VAR} 或 %VAR% 格式）
+      # Windows 示例：
+      #   path: E:\\Soft\\llama-b10514-bin-win-cuda-13.3-x64\\llama-server.log
+      # 需要先启动 llama-server 时添加 --log-file 参数
+      path: E:\\Soft\\llama-b10514-bin-win-cuda-13.3-x64\\llama-server.log
+      follow: true            # 流式跟随；false 时改为 2s 周期拉取
+      catchup_sec: 30         # 重连后补拉秒数（file 模式重连补拉 200 行）
+    disk_mounts:              # 监控的挂载点（df 采集）
+      - /
+      - /share
+    # thresholds:             # 每主机阈值覆盖（可选）
+    #   mtp: {warn: 80, danger: 65}
+
+  - id: ai-dev
+    name: AI服务器 
+    llama:
+      - host: 10.10.10.1            # llama-server 地址（支持 IPv6 字面量）
+        port: 8060
+        interval: 1.0           # /health + /slots 轮询间隔（秒）
+        slow_interval: 30.0     # /props + /v1/models 轮询间隔（秒）
+        timeout: 3.0
+      - host: 10.10.10.1
+        port: 8065
+        interval: 1.0
+        slow_interval: 30.0
+        timeout: 3.0
+    ssh:
+      host: 10.10.10.1
+      port: 22
+      user: bso
+      password: Admin123.    # 引用 .env 中的环境变量
+      # key_path: ~/.ssh/id_ed25519   # 密钥认证（可选，与 password 二选一）
+      interval: 2.0           # 批量只读命令间隔（秒）
+      keepalive: 15
+      timeout: 15.0
+    process:
+      name: llama-server      # 进程名（pgrep -x）
+    systemd_unit: llama-server.service
+    log:
+      source: journal         # journal（systemd unit）| file（日志文件，非 systemd 环境用）
+      unit: llama-server      # systemd unit 名（source=journal 时生效）
+      # path: /var/log/llama-server.log   # 日志文件路径（source=file 时必填）
+      follow: true            # 流式跟随；false 时改为 2s 周期拉取
+      catchup_sec: 30         # 重连后补拉秒数（file 模式重连补拉 200 行）
+    disk_mounts:              # 监控的挂载点（df 采集）
+      - /
+      - /share
+    # thresholds:             # 每主机阈值覆盖（可选）
+    #   mtp: {warn: 80, danger: 65}

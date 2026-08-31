@@ -8,7 +8,7 @@
 import asyncio
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from .alerts import evaluate_alerts
 from .config import AppConfig, GlobalConfig, HostConfig
@@ -37,7 +37,8 @@ class HostMonitor:
         self.ring_llama = RingBuffer(global_cfg.llama_points)
         self.ring_host = RingBuffer(global_cfg.host_points)
         self.ssh = SshConnection(cfg.ssh, self.events, cfg.id)
-        self.llama = LlamaPoller(cfg, self.events)
+        # 支持多端口：每个 llama 配置创建一个 LlamaPoller
+        self.llamas: List[LlamaPoller] = [LlamaPoller(cfg, self.events) for cfg in cfg.llama]
         self.ssh_poller = SshPoller(cfg, self.ssh, self.diff, self.ring_host, self.events)
         self.log_poller = LogPoller(cfg, self.ssh, self.events, self.ring_llama)
         self._tasks: List[asyncio.Task] = []
@@ -50,7 +51,8 @@ class HostMonitor:
     async def start(self) -> None:
         log.info("[%s] HostMonitor 启动", self.cfg.id)
         self._tasks = [
-            asyncio.create_task(self.llama.start()),
+            asyncio.create_task(llama.start()) for llama in self.llamas
+        ] + [
             asyncio.create_task(self.ssh_poller.start()),
             asyncio.create_task(self.log_poller.start()),
             asyncio.create_task(self._tick_loop()),
@@ -58,7 +60,8 @@ class HostMonitor:
 
     async def stop(self) -> None:
         self._stopped = True
-        self.llama.stop()
+        for llama in self.llamas:
+            llama.stop()
         self.ssh_poller.stop()
         self.log_poller.stop()
         for t in self._tasks:
@@ -76,7 +79,7 @@ class HostMonitor:
                 now = time.time()
                 gen, prompt = self._speeds()
                 # 离线时写 None（未知）而非 0，历史曲线出现断点而不是假零线
-                online = bool(self.llama.state.get("online"))
+                online = any(llama.state.get("online") for llama in self.llamas)
                 self.ring_llama.push("gen_speed", now, gen if online else None)
                 self.ring_llama.push("prompt_speed", now, prompt if online else None)
                 self._snapshot = self._build_snapshot(gen, prompt)
@@ -88,10 +91,16 @@ class HostMonitor:
                 log.exception("[%s] tick 失败", self.cfg.id)
 
     def _speeds(self):
-        """速度来源优先级：日志 tg_3s / prompt 行 > /slots 差分。"""
-        llama = self.llama.state
-        gen = llama.get("gen_speed_tps") or 0.0
-        prompt = llama.get("prompt_speed_tps") or 0.0
+        """速度来源优先级：日志 tg_3s / prompt 行 > /slots 差分。合并所有端口。"""
+        gen_total = 0.0
+        prompt_total = 0.0
+        for llama in self.llamas:
+            state = llama.state
+            if state.get("online"):
+                gen_total += state.get("gen_speed_tps") or 0.0
+                prompt_total += state.get("prompt_speed_tps") or 0.0
+        gen = gen_total
+        prompt = prompt_total
         logst = self.log_poller.state
         st = logst.get("state") or {}
         if logst.get("available"):
@@ -110,7 +119,19 @@ class HostMonitor:
 
     def _build_snapshot(self, gen: float, prompt: float) -> Dict[str, Any]:
         now = time.time()
-        llama = self.llama.state
+        # 合并所有 llama poller 的状态
+        all_models = []
+        all_slots = []
+        all_online = False
+        for llama in self.llamas:
+            state = llama.state
+            if state.get("online"):
+                all_online = True
+            model = dict(state.get("model") or {})
+            if model:
+                all_models.append(model)
+            all_slots.extend(state.get("slots", []))
+        
         logst = self.log_poller.state
         hm = self.ssh_poller.metrics
         st = logst.get("state") or {}
@@ -120,21 +141,13 @@ class HostMonitor:
             (st.get("phase") == "prompt_processing" and st.get("prompt_speed_tps") is not None)
         )) else "api"
 
-        # 模型合并：/props + /v1/models + 命令行(mmproj) + ls -l(体积)
-        model = dict(llama.get("model") or {})
+        # 命令行和 flags 取第一个模型的
         cmdline = (hm.get("process") or {}).get("cmdline", "")
         if cmdline != self._last_cmdline:
             self._last_cmdline = cmdline
             self._flags = parse_cmdline(cmdline)
         flags = self._flags
         sizes = hm.get("_model_sizes") or {}
-        if model.get("path") and model.get("path") in sizes:
-            model["file_size"] = sizes[model["path"]]
-        mmproj = flags.get("mmproj")
-        if mmproj:
-            model["mmproj_path"] = mmproj
-            if mmproj in sizes:
-                model["mmproj_size"] = sizes[mmproj]
 
         host_metrics = {k: v for k, v in hm.items() if k != "_model_sizes"}
         if isinstance(host_metrics.get("process"), dict):
@@ -142,30 +155,32 @@ class HostMonitor:
             host_metrics["process"]["flags"] = flags
 
         # 上下文：API 实时值（slot）优先，日志（任务结束行）兜底。
-        # 注意 logst 是 LogPoller 的活引用，合并结果必须放副本，不能改原 state。
         log_snap = dict(logst)
         ctx = dict(logst.get("context") or {})
-        api_ctx = llama.get("ctx") or {}
-        if api_ctx.get("total"):
-            ctx["total"] = api_ctx["total"]
-        if api_ctx.get("used") is not None:
-            ctx["used"] = api_ctx["used"]
-        if ctx.get("used") is not None and ctx.get("total"):
-            ctx["pct"] = round(ctx["used"] / ctx["total"] * 100.0, 1)
-            ctx["remaining"] = max(0, ctx["total"] - ctx["used"])
+        # 取第一个在线 poller 的上下文
+        for llama in self.llamas:
+            api_ctx = llama.state.get("ctx") or {}
+            if api_ctx.get("total"):
+                ctx["total"] = api_ctx["total"]
+            if api_ctx.get("used") is not None:
+                ctx["used"] = api_ctx["used"]
+            if ctx.get("used") is not None and ctx.get("total"):
+                ctx["pct"] = round(ctx["used"] / ctx["total"] * 100.0, 1)
+                ctx["remaining"] = max(0, ctx["total"] - ctx["used"])
+            break
         log_snap["context"] = ctx
 
         snap = {
             "ts": now,
             "host": {"id": self.cfg.id, "name": self.cfg.name},
             "llama": {
-                "online": bool(llama.get("online")),
-                "model": model,
+                "online": all_online,
+                "models": all_models,  # 支持多模型
                 "gen_speed_tps": round(gen, 2),
                 "prompt_speed_tps": round(prompt, 2),
                 "speed_source": source,
                 "log": log_snap,
-                "slots": llama.get("slots", []),
+                "slots": all_slots,  # 合并所有端口的 slots
             },
             "host_metrics": host_metrics,
             "events": self.events.list(50),
@@ -203,7 +218,8 @@ class HostMonitor:
         snap = self.snapshot()
         ll = snap["llama"]
         hm = snap["host_metrics"]
-        model = ll.get("model") or {}
+        # 支持多模型：返回第一个模型的信息用于兼容
+        model = (ll.get("models") or [{}])[0] if ll.get("models") else (ll.get("model") or {})
         mem = hm.get("mem") or {}
         gpus = []
         for g in hm.get("gpus") or []:

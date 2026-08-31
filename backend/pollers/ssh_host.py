@@ -164,6 +164,9 @@ def split_sections(output: str) -> Dict[str, str]:
     for line in output.splitlines():
         s = line.strip()
         if s.startswith("==") and s.endswith("==") and len(s) > 4:
+            # 跳过 ==PROC_END== 这样的结束标记，不作为新 section
+            if s == "==PROC_END==":
+                continue
             if current is not None:
                 sections[current] = "\n".join(buf).strip("\n")
             current = s[2:-2]
@@ -661,13 +664,14 @@ def parse_proc(section: str, diff: DiffEngine, ts: float, host_id: str) -> Dict[
     """
     # 调试：打印原始 section
     import logging
+    import re
     log = logging.getLogger("llamalens.sshpoller")
     log.info("[%s] parse_proc 原始 section (长度=%d):\n%s", host_id, len(section), section[:1000])
     
     result = {"found": False, "procs": []}
     
-    # 按 ==PROC_END== 分割多个进程块
-    proc_blocks = section.split("==PROC_END==")
+    # 按 P:PID 行分割多个进程块
+    proc_blocks = re.split(r'(?=^P:\d+)', section, flags=re.MULTILINE)
     log.info("[%s] 分割成 %d 个块", host_id, len(proc_blocks))
     
     for block in proc_blocks:
@@ -727,7 +731,6 @@ def parse_proc(section: str, diff: DiffEngine, ts: float, host_id: str) -> Dict[
         # 如果有多个进程，保留 procs 数组
         if len(result["procs"]) > 1:
             result["procs_count"] = len(result["procs"])
-            # 将其他进程也添加到 procs 数组（去掉重复的 primary 数据）
     
     return result
 

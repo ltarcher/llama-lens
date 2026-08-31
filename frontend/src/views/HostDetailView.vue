@@ -312,7 +312,19 @@ const cpu = computed(() => hm.value.cpu || {})
 const mem = computed(() => hm.value.mem || {})
 const disk = computed(() => hm.value.disk || {})
 const net = computed(() => hm.value.net || {})
-const process = computed(() => hm.value.process || {})
+const process = computed(() => {
+  const p = hm.value.process || {}
+  // 调试日志
+  if (p.found) {
+    console.log('[HostDetail] process.found = true', {
+      hasProcs: !!p.procs,
+      procsCount: p.procs?.length || 0,
+      pids: p.procs?.map(pr => pr.pid) || [],
+      hasFlags: !!p.flags
+    })
+  }
+  return p
+})
 const service = computed(() => hm.value.service || {})
 const topCpu = computed(() => (hm.value.top && hm.value.top.cpu) || [])
 const topMem = computed(() => (hm.value.top && hm.value.top.mem) || [])

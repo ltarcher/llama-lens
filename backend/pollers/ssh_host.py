@@ -73,14 +73,20 @@ awk '$3 ~ /^(sd|vd|nvme)/ && $3 !~ /p[0-9]+$/ && $3 !~ /^[sv]d[a-z]+[0-9]+$/ {{p
 echo ==DF==
 df -B1 --output=source,target,size,used,avail,pcent {df_mounts} 2>/dev/null
 echo ==PROC==
-PID=$(pgrep -x {process_name} | head -1)
-if [ -n "$PID" ]; then
-  echo P:$PID
-  awk '{{print $14, $15, $23}}' /proc/$PID/stat 2>/dev/null
-  grep -E '^(VmRSS|VmSize|Threads)' /proc/$PID/status 2>/dev/null
-  ps -o pcpu=,pmem=,etime= -p $PID 2>/dev/null
-  tr '\0' ' ' < /proc/$PID/cmdline 2>/dev/null; echo
-fi
+# 使用 ps 查找所有 llama-server 进程，保存 PID 列表
+ps -eo pid=,args= | grep "{process_name}" | grep -v grep | awk '{{print $1}}' > /tmp/_pids_$$
+# 逐个处理 PID
+while read _p; do
+  if [ -n "$_p" ]; then
+    echo P:$_p
+    awk '{{print $14, $15, $23}}' /proc/$_p/stat 2>/dev/null
+    grep -E '^(VmRSS|VmSize|Threads)' /proc/$_p/status 2>/dev/null
+    ps -o pcpu=,pmem=,etime= -p $_p 2>/dev/null
+    tr '\0' ' ' < /proc/$_p/cmdline 2>/dev/null
+    echo ==PROC_END==
+  fi
+done < /tmp/_pids_$$
+rm -f /tmp/_pids_$$
 echo ==PS==
 ps -eo pid,comm,pcpu,pmem,rss --no-headers 2>/dev/null
 echo ==PSTICKS==
@@ -646,47 +652,86 @@ def parse_df(section: str) -> List[Dict[str, Any]]:
 
 
 def parse_proc(section: str, diff: DiffEngine, ts: float, host_id: str) -> Dict[str, Any]:
-    proc = {"found": False}
-    lines = [l for l in section.splitlines() if l.strip()]
-    if not lines or not lines[0].startswith("P:"):
-        return proc
-    pid = _i(lines[0][2:])
-    proc["found"] = True
-    proc["pid"] = pid
-    idx = 1
-    # utime stime vsize
-    if idx < len(lines):
-        f = lines[idx].split()
-        if len(f) >= 3:
-            utime = _i(f[0], 0)
-            stime = _i(f[1], 0)
-            vsize = _i(f[2], 0)
-            proc["vsz_mb"] = vsize // (1024 * 1024)
-            proc["cpu_pct_realtime"] = diff.process_cpu_pct(
-                "proc:%s:%s" % (host_id, pid), ts, utime + stime)
-        idx += 1
-    # VmRSS / VmSize / Threads
-    while idx < len(lines) and lines[idx].startswith(("VmRSS", "VmSize", "Threads")):
-        l = lines[idx]
-        if l.startswith("VmRSS"):
-            proc["rss_mb"] = _i(l.split()[1], 0) // 1024
-        elif l.startswith("VmSize"):
-            proc["vsz_mb"] = _i(l.split()[1], 0) // 1024
-        elif l.startswith("Threads"):
-            proc["threads"] = _i(l.split()[1], 0)
-        idx += 1
-    # ps pcpu pmem etime
-    if idx < len(lines):
-        f = lines[idx].split()
-        if len(f) >= 3:
-            proc["cpu_pct_lifetime"] = _f(f[0])
-            proc["mem_pct"] = _f(f[1])
-            proc["elapsed"] = f[2]
-        idx += 1
-    # cmdline（剩余行合并）
-    if idx < len(lines):
-        proc["cmdline"] = " ".join(l.strip() for l in lines[idx:]).strip()
-    return proc
+    """解析 ==PROC== 段，支持多个 llama-server 进程。
+    
+    返回格式：
+    {
+        "found": True,
+        "procs": [proc1, proc2, ...],  # 所有匹配的进程
+        "primary": proc1,  # 第一个进程（用于兼容旧代码）
+    }
+    """
+    # 调试：打印原始 section
+    import logging
+    log = logging.getLogger("llamalens.sshpoller")
+    log.info("[%s] parse_proc 原始 section (长度=%d):\n%s", host_id, len(section), section[:1000])
+    
+    result = {"found": False, "procs": []}
+    
+    # 按 ==PROC_END== 分割多个进程块
+    proc_blocks = section.split("==PROC_END==")
+    log.info("[%s] 分割成 %d 个块", host_id, len(proc_blocks))
+    
+    for block in proc_blocks:
+        lines = [l for l in block.strip().splitlines() if l.strip()]
+        if not lines or not lines[0].startswith("P:"):
+            continue
+        
+        pid = _i(lines[0][2:])
+        if pid is None:
+            continue
+        
+        proc = {"found": True, "pid": pid}
+        idx = 1
+        
+        # utime stime vsize
+        if idx < len(lines):
+            f = lines[idx].split()
+            if len(f) >= 3:
+                utime = _i(f[0], 0)
+                stime = _i(f[1], 0)
+                vsize = _i(f[2], 0)
+                proc["vsz_mb"] = vsize // (1024 * 1024)
+                proc["cpu_pct_realtime"] = diff.process_cpu_pct(
+                    "proc:%s:%s" % (host_id, pid), ts, utime + stime)
+            idx += 1
+        
+        # VmRSS / VmSize / Threads
+        while idx < len(lines) and lines[idx].startswith(("VmRSS", "VmSize", "Threads")):
+            l = lines[idx]
+            if l.startswith("VmRSS"):
+                proc["rss_mb"] = _i(l.split()[1], 0) // 1024
+            elif l.startswith("VmSize"):
+                proc["vsz_mb"] = _i(l.split()[1], 0) // 1024
+            elif l.startswith("Threads"):
+                proc["threads"] = _i(l.split()[1], 0)
+            idx += 1
+        
+        # ps pcpu pmem etime
+        if idx < len(lines):
+            f = lines[idx].split()
+            if len(f) >= 3:
+                proc["cpu_pct_lifetime"] = _f(f[0])
+                proc["mem_pct"] = _f(f[1])
+                proc["elapsed"] = f[2]
+            idx += 1
+        
+        # cmdline（剩余行合并）
+        if idx < len(lines):
+            proc["cmdline"] = " ".join(l.strip() for l in lines[idx:]).strip()
+        
+        result["procs"].append(proc)
+    
+    if result["procs"]:
+        result["found"] = True
+        # 始终合并第一个进程到顶层，保持向后兼容
+        result.update(result["procs"][0])
+        # 如果有多个进程，保留 procs 数组
+        if len(result["procs"]) > 1:
+            result["procs_count"] = len(result["procs"])
+            # 将其他进程也添加到 procs 数组（去掉重复的 primary 数据）
+    
+    return result
 
 
 def parse_ps_ticks(section: str) -> Dict[int, int]:
@@ -999,6 +1044,10 @@ class SshPoller:
             out_str = "\n".join(out_parts)
         else:
             # Linux: 单条命令执行
+            if not hasattr(self, '_cmd_debugged'):
+                batch_cmd_full = self._build_batch_cmd()
+                log.info("[%s] Linux 批量命令 (前500字符):\n%s", self.host_id, batch_cmd_full[:500])
+                self._cmd_debugged = True
             out = await self.ssh.exec_command(batch_cmd)
             if out is None:
                 self.metrics["reachable"] = False
@@ -1007,6 +1056,11 @@ class SshPoller:
         
         self.metrics["reachable"] = True
         sec = split_sections(out_str)
+        
+        # 调试：打印 PROC 段
+        if "PROC" in sec:
+            log.info("[%s] PROC段输出:\n%s", self.host_id, sec["PROC"][:500])
+        
         self._parse_cycle(sec, ts)
 
     def _parse_cycle(self, sec: Dict[str, str], ts: float) -> None:
@@ -1114,7 +1168,12 @@ class SshPoller:
             m["top"] = {"cpu": top_cpu, "mem": top_mem}
         else:
             # Linux Top 进程
-            procs = parse_ps(sec.get("PS", ""))
+            ps_section = sec.get("PS", "")
+            log.info("[%s] PS段原始数据 (长度=%d):\n%s", self.host_id, len(ps_section), ps_section[:500])
+            procs = parse_ps(ps_section)
+            log.info("[%s] parse_ps 解析出 %d 个进程", self.host_id, len(procs))
+            llama_procs = [p for p in procs if 'llama' in p['name'].lower()]
+            log.info("[%s] 其中 llama-server 进程: %d 个 - PIDs: %s", self.host_id, len(llama_procs), [p['pid'] for p in llama_procs])
             ps_ticks = parse_ps_ticks(sec.get("PSTICKS", ""))
             ps_rows = []
             for p in procs:

@@ -3,11 +3,24 @@
     <div class="panel-head">
       <span class="panel-title">llama-server 进程</span>
       <span v-if="!found" class="badge warn">未找到进程</span>
+      <span v-if="procsCount > 1" class="badge info">{{ procsCount }} 个进程</span>
     </div>
 
     <template v-if="found">
+      <!-- 多进程切换标签 -->
+      <div v-if="procs.length > 1" class="proc-tabs">
+        <button
+          v-for="(proc, idx) in procs"
+          :key="proc.pid"
+          :class="['proc-tab', { active: activeProcIdx === idx }]"
+          @click="activeProcIdx = idx"
+        >
+          PID {{ proc.pid }}
+        </button>
+      </div>
+
       <div class="metrics mono">
-        <div class="m"><span class="v">{{ pid }}</span><span class="k">PID</span></div>
+        <div class="m"><span class="v">{{ currentPid }}</span><span class="k">PID</span></div>
         <div class="m"><span class="v" :class="cpuLevelClass">{{ cpuRtText }}</span><span class="k">实时 CPU</span></div>
         <div class="m"><span class="v">{{ cpuLifeText }}</span><span class="k">累计 CPU</span></div>
         <div class="m"><span class="v">{{ rssText }}</span><span class="k">RSS</span></div>
@@ -59,18 +72,33 @@ const props = defineProps({
 
 const cmdOpen = ref(true)
 const flagOpen = ref(true)
+const activeProcIdx = ref(0)
+
+const procs = computed(() => {
+  if (props.process.procs && Array.isArray(props.process.procs)) {
+    return props.process.procs
+  }
+  // 单进程情况，包装成数组
+  if (props.process.found) {
+    return [props.process]
+  }
+  return []
+})
+
+const procsCount = computed(() => procs.value.length)
+const currentProc = computed(() => procs.value[activeProcIdx.value] || {})
 
 const found = computed(() => !!props.process.found)
-const pid = computed(() => props.process.pid)
-const cmdline = computed(() => props.process.cmdline)
-const threads = computed(() => props.process.threads)
-const elapsed = computed(() => props.process.elapsed)
+const currentPid = computed(() => currentProc.value.pid)
+const cmdline = computed(() => currentProc.value.cmdline)
+const threads = computed(() => currentProc.value.threads)
+const elapsed = computed(() => currentProc.value.elapsed)
 
-const cpuRt = computed(() => props.process.cpu_pct_realtime ?? null)
+const cpuRt = computed(() => currentProc.value.cpu_pct_realtime ?? null)
 const cpuRtText = computed(() => (cpuRt.value === null ? '—' : cpuRt.value.toFixed(1) + '%'))
-const cpuLifeText = computed(() => (props.process.cpu_pct_lifetime === null || props.process.cpu_pct_lifetime === undefined ? '—' : props.process.cpu_pct_lifetime.toFixed(1) + '%'))
-const rssText = computed(() => (props.process.rss_mb ? fmtBytes(props.process.rss_mb * 1024 * 1024) : '—'))
-const vszText = computed(() => (props.process.vsz_mb ? fmtBytes(props.process.vsz_mb * 1024 * 1024) : '—'))
+const cpuLifeText = computed(() => (currentProc.value.cpu_pct_lifetime === null || currentProc.value.cpu_pct_lifetime === undefined ? '—' : currentProc.value.cpu_pct_lifetime.toFixed(1) + '%'))
+const rssText = computed(() => (currentProc.value.rss_mb ? fmtBytes(currentProc.value.rss_mb * 1024 * 1024) : '—'))
+const vszText = computed(() => (currentProc.value.vsz_mb ? fmtBytes(currentProc.value.vsz_mb * 1024 * 1024) : '—'))
 const cpuLevelClass = computed(() => {
   const v = cpuRt.value
   if (v === null) return ''
@@ -79,7 +107,7 @@ const cpuLevelClass = computed(() => {
   return ''
 })
 
-const flagRows = computed(() => Object.entries(props.process.flags || {}))
+const flagRows = computed(() => Object.entries(currentProc.value.flags || {}))
 </script>
 
 <style scoped>
@@ -102,6 +130,31 @@ const flagRows = computed(() => Object.entries(props.process.flags || {}))
 }
 .service .k { color: var(--text-faint); }
 .service .v { color: var(--text); word-break: break-all; }
+.proc-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.proc-tab {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.proc-tab:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.proc-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
 .cmdline {
   background: rgba(5, 8, 14, 0.6);
   border-radius: 6px;

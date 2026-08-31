@@ -438,15 +438,19 @@ def parse_win_net(section: str) -> List[Dict[str, Any]]:
         adapters = data if isinstance(data, list) else [data]
 
         for adapter in adapters:
-            name = adapter.get("Caption", "")
-            # BytesReceivedPerSec 和 BytesSentPerSec 是实时速率（字节/秒）
-            rx_bytes_sec = _f(adapter.get("BytesReceivedPerSec"), 0)
-            tx_bytes_sec = _f(adapter.get("BytesSentPerSec"), 0)
+            name = adapter.get("Name", "") or adapter.get("Caption", "")
+            if not name or name == "None":
+                continue
+            # BytesTotalPerSec 是总字节数（收发总和）
+            total_bytes_sec = _f(adapter.get("BytesTotalPerSec"), 0)
+            # CurrentBandwidth 是带宽（bps）
+            bandwidth = _f(adapter.get("CurrentBandwidth"), 0)
 
             ifaces.append({
                 "name": name,
-                "rx_bytes": int(rx_bytes_sec),  # 近似为字节数
-                "tx_bytes": int(tx_bytes_sec),  # 近似为字节数
+                "rx_bytes": int(total_bytes_sec / 2),  # 近似为接收速率
+                "tx_bytes": int(total_bytes_sec / 2),  # 近似为发送速率
+                "bandwidth": int(bandwidth),
                 "_is_rate": True,  # 标记这是速率而非累计值
             })
     except (json.JSONDecodeError, ValueError, TypeError):
@@ -963,9 +967,9 @@ class SshPoller:
                 ("APPS", "cmd /c nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader,nounits"),
                 ("CPU", 'powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_Processor | Select-Object -Property Name,NumberOfCores,NumberOfLogicalProcessors,MaxClockSpeed | ConvertTo-Json -Compress"'),
                 ("MEM", 'powershell -NoProfile -NonInteractive -Command "$os = Get-CimInstance Win32_OperatingSystem; $t = [math]::Round($os.TotalVisibleMemorySize/1MB,2); $u = [math]::Round(($os.TotalVisibleMemorySize-$os.FreePhysicalMemory)/1MB,2); $f = [math]::Round($os.FreePhysicalMemory/1MB,2); Write-Host ($t.ToString() + \',\' + $u.ToString() + \',\' + $f.ToString())"'),
-                ("LOAD", 'powershell -NoProfile -NonInteractive -Command "((Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor -Filter Name=\\"_total\\\").PercentProcessorTime)"'),
-                ("DISK", "cmd /c \"powershell -NoProfile -NonInteractive -Command \\\"Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object DeviceID,Size,FreeSpace | ConvertTo-Json -Compress\\\"\""),
-                ("NET", "cmd /c \"powershell -NoProfile -NonInteractive -Command \\\"Get-CimInstance Win32_PerfFormattedData_TCP_NET_TCPv4 | Select-Object SegmentCountPerSec | ConvertTo-Json -Compress\\\"\""),
+                ("LOAD", 'powershell -NoProfile -NonInteractive -Command "$proc = Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor | Where-Object {$_.Name -eq \'_total\'}; $proc.PercentProcessorTime"'),
+                ("DISK", 'powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_LogicalDisk -Filter DriveType=3 | Select-Object DeviceID,Size,FreeSpace | ConvertTo-Json -Compress"'),
+                ("NET", 'powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_PerfFormattedData_Tcpip_NetworkInterface | Select-Object Name,CurrentBandwidth,BytesTotalPerSec | ConvertTo-Json -Compress"'),
                 ("PROC", f'powershell -NoProfile -NonInteractive -Command "$proc = Get-Process -Name {self.cfg.process_name} -ErrorAction SilentlyContinue | Sort-Object WorkingSet64 -Descending | Select-Object -First 1; if ($proc) {{ Write-Host (\'P:\' + $proc.Id); Write-Host (\' {0} {1} {2} \' -f $proc.CPU, $proc.WorkingSet64, $proc.TotalProcessorTime.TotalSeconds); Write-Host $proc.TotalProcessorTime.ToString(\'hh\\:mm\\:ss\') }}"'),
                 ("PS", "powershell -NoProfile -NonInteractive -Command \"Get-Process | Where-Object {$_ .Id -ne $PID} | Select-Object Id,ProcessName,CPU,WorkingSet64 | Sort-Object CPU -Descending | Select-Object -First 50 | ForEach-Object {\' {0} {1} {2} {3} \' -f $_.Id, $_.ProcessName, [math]::Round($_.CPU,2), [math]::Round($_.WorkingSet64/1MB,2)}\""),
                 ("SERVICE", f'powershell -NoProfile -NonInteractive -Command "Get-Service -Name {self.cfg.systemd_unit} -ErrorAction SilentlyContinue | Select-Object Name,DisplayName,Status,StartTime | ConvertTo-Json -Compress"'),

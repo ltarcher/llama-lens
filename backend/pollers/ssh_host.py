@@ -347,13 +347,13 @@ def parse_win_cpu(section: str) -> Dict[str, Any]:
         if isinstance(data, dict):
             result["model"] = data.get("Name", "")
             result["cores"] = _i(data.get("NumberOfCores"), 0)
-            result["mhz"] = _f(data.get("MaxClockSpeed"), 0.0) / 1000.0  # MHz -> GHz
+            result["mhz"] = _f(data.get("MaxClockSpeed"), 0.0)  # 直接使用 MHz
         elif isinstance(data, list) and data:
             # 可能是数组
             cpu = data[0]
             result["model"] = cpu.get("Name", "")
             result["cores"] = _i(cpu.get("NumberOfCores"), 0)
-            result["mhz"] = _f(cpu.get("MaxClockSpeed"), 0.0) / 1000.0
+            result["mhz"] = _f(cpu.get("MaxClockSpeed"), 0.0)  # 直接使用 MHz
     except (json.JSONDecodeError, ValueError, TypeError):
         pass
 
@@ -361,7 +361,7 @@ def parse_win_cpu(section: str) -> Dict[str, Any]:
 
 
 def parse_win_mem(section: str) -> Dict[str, Any]:
-    """解析 Windows 内存信息（PowerShell 输出：total,used,free MB）。"""
+    """解析 Windows 内存信息（PowerShell 输出：total,used,free GB）。"""
     result = {"total_mb": 0, "used_mb": 0, "free_mb": 0, "available_mb": 0, "buff_cache_mb": 0,
               "swap_total_mb": 0, "swap_used_mb": 0}
     if not section:
@@ -370,13 +370,14 @@ def parse_win_mem(section: str) -> Dict[str, Any]:
     fields = section.strip().split(",")
     if len(fields) >= 3:
         try:
-            total = _f(fields[0], 0)
-            used = _f(fields[1], 0)
-            free = _f(fields[2], 0)
-            result["total_mb"] = total
-            result["used_mb"] = used
-            result["free_mb"] = free
-            result["available_mb"] = free
+            # PowerShell 输出的是 GB，转换为 MB
+            total_gb = _f(fields[0], 0)
+            used_gb = _f(fields[1], 0)
+            free_gb = _f(fields[2], 0)
+            result["total_mb"] = int(total_gb * 1024)
+            result["used_mb"] = int(used_gb * 1024)
+            result["free_mb"] = int(free_gb * 1024)
+            result["available_mb"] = int(free_gb * 1024)
         except (ValueError, IndexError):
             pass
 
@@ -955,42 +956,33 @@ class SshPoller:
             log.info("[%s] Windows 批量采集：逐条命令执行", self.host_id)
             # Windows: 逐条命令执行并合并结果
             out_parts = []
+            section_names = []
             commands = [
-                "echo ==GPU==",
-                "nvidia-smi --query-gpu=index,name,driver_version,memory.total,memory.used,memory.free,utilization.gpu,utilization.memory,temperature.gpu,power.draw,power.limit,fan.speed,clocks.current.graphics,clocks.current.memory,pcie.link.gen.current,pcie.link.width.current,pstate,temperature.memory,ecc.errors.corrected.volatile.total,ecc.errors.uncorrected.volatile.total,clocks_throttle_reasons.active --format=csv,noheader,nounits 2>/dev/null",
-                "echo ==SMI==",
-                "nvidia-smi 2>/dev/null | sed -n 3p",
-                "echo ==APPS==",
-                "nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader,nounits 2>/dev/null",
-                "echo ==CPU==",
-                'powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_Processor | Select-Object -Property Name,NumberOfCores,NumberOfLogicalProcessors,MaxClockSpeed | ConvertTo-Json -Compress"',
-                "echo ==MEM==",
-                'powershell -NoProfile -NonInteractive -Command "$os = Get-CimInstance Win32_OperatingSystem; \' {0},{1},{2} \' -f [math]::Round($os.TotalVisibleMemorySize/1MB,2),[math]::Round(($os.TotalVisibleMemorySize-$os.FreePhysicalMemory)/1MB,2),[math]::Round($os.FreePhysicalMemory/1MB,2)"',
-                "echo ==LOAD==",
-                'powershell -NoProfile -NonInteractive -Command "(Get-CimInstance Win32_Processor | Select-Object -Property LoadPercentage)[0].LoadPercentage"',
-                "echo ==DISK==",
-                "powershell -NoProfile -NonInteractive -Command \"Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object DeviceID,Size,FreeSpace | ConvertTo-Json -Compress\"",
-                "echo ==NET==",
-                "powershell -NoProfile -NonInteractive -Command \"Get-CimInstance Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=True' | Select-Object Caption,BytesReceivedPerSec,BytesSentPerSec | ConvertTo-Json -Compress\"",
-                "echo ==PROC==",
-                f'powershell -NoProfile -NonInteractive -Command "$proc = Get-Process -Name {self.cfg.process_name} -ErrorAction SilentlyContinue | Sort-Object WorkingSet64 -Descending | Select-Object -First 1; if ($proc) {{ Write-Host (\'P:\' + $proc.Id); Write-Host (\' {0} {1} {2} \' -f $proc.CPU, $proc.WorkingSet64, $proc.TotalProcessorTime.TotalSeconds); Write-Host $proc.TotalProcessorTime.ToString(\'hh\\:mm\\:ss\') }}"',
-                "echo ==PS==",
-                "powershell -NoProfile -NonInteractive -Command \"Get-Process | Where-Object {$_ .Id -ne $PID} | Select-Object Id,ProcessName,CPU,WorkingSet64 | Sort-Object CPU -Descending | Select-Object -First 50 | ForEach-Object {\' {0} {1} {2} {3} \' -f $_.Id, $_.ProcessName, [math]::Round($_.CPU,2), [math]::Round($_.WorkingSet64/1MB,2)}\"",
-                "echo ==SERVICE==",
-                f'powershell -NoProfile -NonInteractive -Command "Get-Service -Name {self.cfg.systemd_unit} -ErrorAction SilentlyContinue | Select-Object Name,DisplayName,Status,StartTime | ConvertTo-Json -Compress"',
-                "echo ==MODELS==",
-                f'powershell -NoProfile -NonInteractive -Command "$proc = Get-Process -Name {self.cfg.process_name} -ErrorAction SilentlyContinue | Sort-Object WorkingSet64 -Descending | Select-Object -First 1; if ($proc) {{ Write-Host $proc.GetCommandLine() }}"',
-                "echo ==END==",
+                ("GPU", "cmd /c nvidia-smi --query-gpu=index,name,driver_version,memory.total,memory.used,memory.free,utilization.gpu,utilization.memory,temperature.gpu,power.draw,power.limit,fan.speed,clocks.current.graphics,clocks.current.memory,pcie.link.gen.current,pcie.link.width.current,pstate,temperature.memory,ecc.errors.corrected.volatile.total,ecc.errors.uncorrected.volatile.total,clocks_throttle_reasons.active --format=csv,noheader,nounits"),
+                ("SMI", "cmd /c nvidia-smi"),
+                ("APPS", "cmd /c nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader,nounits"),
+                ("CPU", 'powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_Processor | Select-Object -Property Name,NumberOfCores,NumberOfLogicalProcessors,MaxClockSpeed | ConvertTo-Json -Compress"'),
+                ("MEM", 'powershell -NoProfile -NonInteractive -Command "$os = Get-CimInstance Win32_OperatingSystem; $t = [math]::Round($os.TotalVisibleMemorySize/1MB,2); $u = [math]::Round(($os.TotalVisibleMemorySize-$os.FreePhysicalMemory)/1MB,2); $f = [math]::Round($os.FreePhysicalMemory/1MB,2); Write-Host ($t.ToString() + \',\' + $u.ToString() + \',\' + $f.ToString())"'),
+                ("LOAD", 'powershell -NoProfile -NonInteractive -Command "((Get-CimInstance Win32_PerfFormattedData_PerfOS_Processor -Filter Name=\\"_total\\\").PercentProcessorTime)"'),
+                ("DISK", "cmd /c \"powershell -NoProfile -NonInteractive -Command \\\"Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object DeviceID,Size,FreeSpace | ConvertTo-Json -Compress\\\"\""),
+                ("NET", "cmd /c \"powershell -NoProfile -NonInteractive -Command \\\"Get-CimInstance Win32_PerfFormattedData_TCP_NET_TCPv4 | Select-Object SegmentCountPerSec | ConvertTo-Json -Compress\\\"\""),
+                ("PROC", f'powershell -NoProfile -NonInteractive -Command "$proc = Get-Process -Name {self.cfg.process_name} -ErrorAction SilentlyContinue | Sort-Object WorkingSet64 -Descending | Select-Object -First 1; if ($proc) {{ Write-Host (\'P:\' + $proc.Id); Write-Host (\' {0} {1} {2} \' -f $proc.CPU, $proc.WorkingSet64, $proc.TotalProcessorTime.TotalSeconds); Write-Host $proc.TotalProcessorTime.ToString(\'hh\\:mm\\:ss\') }}"'),
+                ("PS", "powershell -NoProfile -NonInteractive -Command \"Get-Process | Where-Object {$_ .Id -ne $PID} | Select-Object Id,ProcessName,CPU,WorkingSet64 | Sort-Object CPU -Descending | Select-Object -First 50 | ForEach-Object {\' {0} {1} {2} {3} \' -f $_.Id, $_.ProcessName, [math]::Round($_.CPU,2), [math]::Round($_.WorkingSet64/1MB,2)}\""),
+                ("SERVICE", f'powershell -NoProfile -NonInteractive -Command "Get-Service -Name {self.cfg.systemd_unit} -ErrorAction SilentlyContinue | Select-Object Name,DisplayName,Status,StartTime | ConvertTo-Json -Compress"'),
+                ("MODELS", f'powershell -NoProfile -NonInteractive -Command "$proc = Get-Process -Name {self.cfg.process_name} -ErrorAction SilentlyContinue | Sort-Object WorkingSet64 -Descending | Select-Object -First 1; if ($proc) {{ Write-Host $proc.GetCommandLine() }}"'),
             ]
-            for c in commands:
+            for section_name, c in commands:
                 try:
                     out_text = await self.ssh.exec_command(c)
                     if out_text:
                         out_text = out_text.strip()
                         if out_text:
+                            # 添加段标记
+                            out_parts.append(f"=={section_name}==")
                             out_parts.append(out_text)
-                except Exception:
-                    pass
+                            section_names.append(section_name)
+                except Exception as e:
+                    log.warning("[%s] [%s] 命令执行失败: %s", self.host_id, section_name, e)
             out_str = "\n".join(out_parts)
         else:
             # Linux: 单条命令执行
@@ -1024,9 +1016,12 @@ class SshPoller:
             cpu["model"] = win_cpu.get("model", "")
             cpu["cores"] = win_cpu.get("cores", 0)
             cpu["mhz"] = win_cpu.get("mhz", 0.0)
-            cpu["usage_pct"] = win_cpu.get("usage_pct", 0.0)
+            
+            # 从 LOAD 段获取实时 CPU 使用率
+            load_pct = _f(sec.get("LOAD", "").strip(), 0.0)
+            cpu["usage_pct"] = load_pct
             cpu["per_core_pct"] = []  # Windows 不解析每核 CPU
-            cpu["load"] = [win_cpu.get("usage_pct", 0.0)] * 3
+            cpu["load"] = [load_pct, load_pct, load_pct]
         else:
             # Linux CPU 信息
             stat = parse_stat(sec.get("STAT", ""))

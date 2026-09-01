@@ -50,7 +50,7 @@ hosts:
     #   mtp: {warn: 80, danger: 65}
 
   - id: ai-dev
-    name: AI服务器 
+    name: AI服务器
     llama:
       - host: 10.10.10.1            # llama-server 地址（支持 IPv6 字面量）
         port: 8060
@@ -62,6 +62,11 @@ hosts:
         interval: 1.0
         slow_interval: 30.0
         timeout: 3.0
+    vllm:                             # vLLM 大模型监控（可选；配置后轮询 /metrics）
+      host: 10.10.10.1                   # vLLM 服务地址
+      port: 8100                            # vLLM 服务端口
+      interval: 2.0                         # /metrics 轮询间隔（秒）
+      timeout: 5.0                            # 单次请求超时（秒）
     ssh:
       host: 10.10.10.1
       port: 22

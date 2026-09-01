@@ -20,6 +20,7 @@ from .pollers.llama_api import LlamaPoller
 from .pollers.log_poller import LogPoller
 from .pollers.ssh_conn import SshConnection
 from .pollers.ssh_host import SshPoller
+from .pollers.vllm_api import VllmPoller
 
 log = logging.getLogger("llamalens.monitor")
 
@@ -47,6 +48,8 @@ class HostMonitor:
             self.llamas.append(LlamaPoller(temp_cfg, self.events))
         self.ssh_poller = SshPoller(cfg, self.ssh, self.diff, self.ring_host, self.events)
         self.log_poller = LogPoller(cfg, self.ssh, self.events, self.ring_llama)
+        # vLLM /metrics 采集器（可选，仅在配置了 vllm 时启用）
+        self.vllm = VllmPoller(cfg, self.events) if cfg.vllm else None
         self._tasks: List[asyncio.Task] = []
         self._snapshot: Optional[Dict[str, Any]] = None
         self._stopped = False
@@ -56,9 +59,12 @@ class HostMonitor:
     # ------------------------------------------------------------------
     async def start(self) -> None:
         log.info("[%s] HostMonitor 启动", self.cfg.id)
-        self._tasks = [
+        poller_tasks = [
             asyncio.create_task(llama.start()) for llama in self.llamas
-        ] + [
+        ]
+        if self.vllm is not None:
+            poller_tasks.append(asyncio.create_task(self.vllm.start()))
+        self._tasks = poller_tasks + [
             asyncio.create_task(self.ssh_poller.start()),
             asyncio.create_task(self.log_poller.start()),
             asyncio.create_task(self._tick_loop()),
@@ -68,6 +74,8 @@ class HostMonitor:
         self._stopped = True
         for llama in self.llamas:
             llama.stop()
+        if self.vllm is not None:
+            self.vllm.stop()
         self.ssh_poller.stop()
         self.log_poller.stop()
         for t in self._tasks:
@@ -176,6 +184,18 @@ class HostMonitor:
             break
         log_snap["context"] = ctx
 
+        # vLLM /metrics 状态（可选）
+        vllm_state = None
+        if self.vllm is not None:
+            v = self.vllm.state
+            # vLLM 在线则合并 online 状态（与 llama 独立判断）
+            vllm_state = {k: v.get(k) for k in (
+                "online", "gpu_cache_pct", "cpu_cache_pct",
+                "running_requests", "waiting_requests",
+                "prompt_tokens_total", "generation_tokens_total",
+                "preemptions_total", "last_poll_ts",
+            )}
+
         snap = {
             "ts": now,
             "host": {"id": self.cfg.id, "name": self.cfg.name},
@@ -188,6 +208,7 @@ class HostMonitor:
                 "log": log_snap,
                 "slots": all_slots,  # 合并所有端口的 slots
             },
+            "vllm": vllm_state,
             "host_metrics": host_metrics,
             "events": self.events.list(50),
         }
@@ -237,10 +258,12 @@ class HostMonitor:
             })
         spark = downsample(self.ring_llama.window("gen_speed", 60, time.time()), 30)
         alerts = snap.get("alerts", [])
+        vllm = snap.get("vllm")
         return {
             "id": self.cfg.id,
             "name": self.cfg.name,
             "online": ll.get("online", False),
+            "vllm_online": bool(vllm and vllm.get("online")) if vllm else None,
             "ssh_ok": hm.get("reachable", False),
             "model_name": model.get("name", ""),
             "n_params": model.get("n_params"),

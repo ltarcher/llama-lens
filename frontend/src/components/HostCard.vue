@@ -37,6 +37,8 @@
       <span>MEM <b :class="valClass(host.mem_pct)">{{ host.mem_pct === null ? '—' : Math.round(host.mem_pct) + '%' }}</b></span>
       <span v-if="!host.ssh_ok" class="lv-warn">SSH 断开</span>
       <span v-if="!host.online" class="lv-danger">llama 离线</span>
+      <span v-if="host.vllm_online" class="vllm-badge ok">vLLM 在线</span>
+      <span v-else-if="host.vllm_online === false" class="vllm-badge warn">vLLM 离线</span>
     </div>
   </router-link>
 </template>
@@ -130,4 +132,23 @@ function valClass(v) {
 .gpu-mem { width: 64px; text-align: right; font-size: 10px; flex: none; }
 .bottom { display: flex; gap: 16px; font-size: 12px; color: var(--text-dim); }
 .bottom b { color: var(--text); font-weight: 600; }
+.vllm-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  border: 1px solid;
+}
+.vllm-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 5px currentColor;
+}
+.vllm-badge.ok { color: var(--green); border-color: rgba(0, 255, 157, 0.4); background: rgba(0, 255, 157, 0.08); }
+.vllm-badge.warn { color: var(--amber); border-color: rgba(255, 197, 61, 0.4); background: rgba(255, 197, 61, 0.08); }
 </style>

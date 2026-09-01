@@ -94,6 +94,14 @@ class LlamaCfg:
 
 
 @dataclass
+class VllmCfg:
+    host: str
+    port: int = 8000
+    interval: float = 2.0        # /metrics 轮询间隔（秒）
+    timeout: float = 3.0
+
+
+@dataclass
 class SshCfg:
     host: str
     port: int = 22
@@ -126,6 +134,7 @@ class HostConfig:
     systemd_unit: str = "llama-server.service"
     os_type: Optional[str] = None  # 手动指定 OS 类型（linux/windows），自动检测时忽略
     thresholds: Dict[str, Dict[str, float]] = field(default_factory=dict)
+    vllm: Optional[VllmCfg] = None  # vLLM /metrics 监控（可选）
 
 
 @dataclass
@@ -154,6 +163,22 @@ def _build_llama(d: dict) -> LlamaCfg:
         port=int(d.get("port", 8080)),
         interval=float(d.get("interval", 1.0)),
         slow_interval=float(d.get("slow_interval", 30.0)),
+        timeout=float(d.get("timeout", 3.0)),
+    )
+
+
+def _build_vllm(d: Optional[dict]) -> Optional[VllmCfg]:
+    """解析 vLLM 监控配置。返回 None 表示未配置（不启用）。"""
+    if d is None:
+        return None
+    d = d or {}
+    host = d.get("host", "")
+    if not host:
+        return None  # 无 host 字段视为未配置
+    return VllmCfg(
+        host=host,
+        port=int(d.get("port", 8000)),
+        interval=float(d.get("interval", 2.0)),
         timeout=float(d.get("timeout", 3.0)),
     )
 
@@ -225,6 +250,7 @@ def _build_host(d: dict, global_t: dict) -> HostConfig:
         systemd_unit=d.get("systemd_unit", "llama-server.service"),
         os_type=d.get("os_type"),  # 手动指定 OS 类型
         thresholds=merge_thresholds(global_t, d.get("thresholds") or {}),
+        vllm=_build_vllm(d.get("vllm")),
     )
 
 

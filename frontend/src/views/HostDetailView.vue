@@ -78,6 +78,14 @@
           <div v-else class="glass placeholder"><span class="icon">▣</span>数据不可用（SSH 断开）</div>
         </section>
 
+        <!-- ============ vLLM 区 ============ -->
+        <section v-if="vllm">
+          <div class="section-title">vLLM 服务</div>
+          <div class="vllm-grid">
+            <VllmPanel :vllm="vllm" />
+          </div>
+        </section>
+
         <!-- ============ 实时生成任务区 ============ -->
         <section>
           <div class="section-title">实时生成任务</div>
@@ -188,6 +196,7 @@ import ModelInfoCard from '../components/ModelInfoCard.vue'
 import SlotTable from '../components/SlotTable.vue'
 import TrendChart from '../components/TrendChart.vue'
 import EventFeed from '../components/EventFeed.vue'
+import VllmPanel from '../components/VllmPanel.vue'
 
 const props = defineProps({ id: { type: String, required: true } })
 
@@ -203,6 +212,7 @@ const events = computed(() => (snap.value ? snap.value.events : []))
 
 const llamaOnline = computed(() => !!(snap.value && snap.value.llama.online))
 const sshOk = computed(() => !!(snap.value && snap.value.host_metrics.reachable))
+const vllm = computed(() => (snap.value && snap.value.vllm) || null)
 
 // 当前主机生成速度同步到全局：浏览器标签页标题（App.vue）与 Terminal 窗口标题栏
 // （TerminalFrame.vue）据此展示，使详情页也能看到速度（BrandBar 只覆盖门户页）。
@@ -583,6 +593,11 @@ onBeforeUnmount(() => {
 }
 .sys-grid:last-child { margin-bottom: 0; }
 .model-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+.vllm-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;

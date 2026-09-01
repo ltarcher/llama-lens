@@ -42,6 +42,11 @@ hosts:
       # path: /var/log/llama-server.log   # 日志文件路径（source=file 时必填）
       follow: true            # 流式跟随；false 时改为 2s 周期拉取
       catchup_sec: 30         # 重连后补拉秒数（file 模式重连补拉 200 行）
+    vllm:                        # vLLM 大模型监控（可选；配置后轮询 /metrics）
+      host: ai.lan               # vLLM 服务地址
+      port: 8000                    # vLLM 服务端口
+      interval: 2.0                # /metrics 轮询间隔（秒）
+      timeout: 3.0                    # 单次请求超时（秒）
     disk_mounts:              # 监控的挂载点（df 采集）
       - /
       - /share

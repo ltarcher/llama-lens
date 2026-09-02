@@ -3,7 +3,7 @@
     <div class="brand">
       <span class="logo">◉</span>
       <span class="name">LLM灵境</span>
-      <span class="sub">llama-server 实时监控</span>
+      <span class="sub">LLM 实时监控</span>
     </div>
     <div class="stats mono">
       <span>主机 <b>{{ hostsTotal }}</b></span>

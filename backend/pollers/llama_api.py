@@ -280,10 +280,16 @@ class LlamaPoller:
             if props.get(k) is not None:
                 model[k] = props[k]
         modalities = props.get("modalities") or []
+        mmproj = props.get("mmproj") or ""
+        # Qwen2-VL/Qwen3-VL 等模型在 modalities 中会声明 "audio"，
+        # 但 mmproj 是 vision 专用的（非 audio projector）。
+        # 真正的 audio 模型（如 whisper）props 中会有专门的 mmproj_audio 字段，
+        # 或 mmproj 文件名包含 "audio"。
+        has_audio_projector = bool(props.get("mmproj_audio")) or "audio" in mmproj.lower()
         model["modalities"] = {
             "vision": "image" in modalities,
             "video": "video" in modalities,
-            "audio": "audio" in modalities,
+            "audio": "audio" in modalities and has_audio_projector,
         }
         caps = props.get("capabilities") or []
         model["capabilities"] = caps

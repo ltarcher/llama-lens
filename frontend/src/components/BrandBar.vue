@@ -12,6 +12,7 @@
       <span v-if="totalSpeed > 0" class="sep">·</span>
       <span v-if="totalSpeed > 0">Token 速度 <b class="lv-cyan">{{ totalSpeed.toFixed(1) }} tok/s</b></span>
       <span class="conn" :class="connected ? 'ok' : 'bad'">{{ connected ? 'WS 实时' : '轮询中' }}</span>
+      <button class="add-host-btn" @click="$emit('add-host')" title="添加主机">+ 添加</button>
       <ThemeSwitcher />
       <span class="clock-sep"></span>
       <LiveClock />
@@ -78,5 +79,20 @@ watch(totalSpeed, (v) => { globalSpeed.value = v }, { immediate: true })
 .conn { padding: 2px 8px; border-radius: 10px; font-size: 11px; }
 .conn.ok { color: var(--green); border: 1px solid rgba(0, 255, 157, 0.35); }
 .conn.bad { color: var(--amber); border: 1px solid rgba(255, 197, 61, 0.35); }
+.add-host-btn {
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--cyan);
+  color: #000;
+  border: 1px solid var(--cyan);
+  cursor: pointer;
+  transition: background 0.15s, transform 0.15s;
+}
+.add-host-btn:hover {
+  background: #00d4e6;
+  transform: scale(1.05);
+}
 .clock-sep { width: 1px; height: 16px; background: rgba(143, 163, 200, 0.25); }
 </style>

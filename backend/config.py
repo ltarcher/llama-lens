@@ -287,3 +287,109 @@ def load_config(base_dir: str, env_file: Optional[str] = None,
     port = int(os.environ.get("PORT", 8000))
     return AppConfig(global_cfg=global_cfg, hosts=hosts, port=port)
 
+
+def save_config(base_dir: str, app_cfg: AppConfig,
+                env_file: Optional[str] = None,
+                hosts_file: Optional[str] = None) -> None:
+    """将 AppConfig 写回 hosts.yaml（保留注释和格式的最小改动）。"""
+    env_file = env_file or os.path.join(base_dir, ".env")
+    hosts_file = hosts_file or os.path.join(base_dir, "config", "hosts.yaml")
+    
+    # 构建 YAML 数据
+    data: Dict[str, Any] = {}
+    g = app_cfg.global_cfg
+    data["global"] = {
+        "push_interval": g.push_interval,
+        "history": {
+            "llama_points": g.llama_points,
+            "host_points": g.host_points,
+        },
+    }
+    if g.thresholds:
+        data["global"]["thresholds"] = g.thresholds
+    
+    data["hosts"] = []
+    for h in app_cfg.hosts:
+        host_dict: Dict[str, Any] = {
+            "id": h.id,
+            "name": h.name,
+        }
+        # llama 配置（可选）
+        if h.llama and len(h.llama) > 0:
+            if len(h.llama) == 1:
+                ll = h.llama[0]
+                host_dict["llama"] = {
+                    "host": ll.host,
+                    "port": ll.port,
+                    "interval": ll.interval,
+                    "slow_interval": ll.slow_interval,
+                    "timeout": ll.timeout,
+                }
+            else:
+                host_dict["llama"] = [
+                    {
+                        "host": ll.host,
+                        "port": ll.port,
+                        "interval": ll.interval,
+                        "slow_interval": ll.slow_interval,
+                        "timeout": ll.timeout,
+                    }
+                    for ll in h.llama
+                ]
+        
+        # vLLM 配置（可选）
+        if h.vllm:
+            host_dict["vllm"] = {
+                "host": h.vllm.host,
+                "port": h.vllm.port,
+                "interval": h.vllm.interval,
+                "timeout": h.vllm.timeout,
+            }
+        
+        # SSH 配置
+        ssh_dict: Dict[str, Any] = {
+            "host": h.ssh.host,
+            "port": h.ssh.port,
+            "user": h.ssh.user,
+        }
+        if h.ssh.password:
+            ssh_dict["password"] = h.ssh.password
+        if h.ssh.key_path:
+            ssh_dict["key_path"] = h.ssh.key_path
+        host_dict["ssh"] = ssh_dict
+        
+        # 其他配置
+        if h.process_name != "llama-server":
+            host_dict["process"] = {"name": h.process_name}
+        host_dict["systemd_unit"] = h.systemd_unit
+        
+        # OS 类型
+        if h.os_type:
+            host_dict["os_type"] = h.os_type
+        
+        # Log 配置
+        log_dict: Dict[str, Any] = {
+            "source": h.log.source,
+            "follow": h.log.follow,
+            "catchup_sec": h.log.catchup_sec,
+        }
+        if h.log.source == "journal" and h.log.unit:
+            log_dict["unit"] = h.log.unit
+        elif h.log.source == "file" and h.log.path:
+            log_dict["path"] = h.log.path
+        host_dict["log"] = log_dict
+        
+        # disk_mounts
+        if h.disk_mounts != ["/"]:
+            host_dict["disk_mounts"] = h.disk_mounts
+        
+        # thresholds（如果有自定义覆盖）
+        if h.thresholds:
+            host_dict["thresholds"] = h.thresholds
+        
+        data["hosts"].append(host_dict)
+    
+    # 写入文件
+    with open(hosts_file, "w", encoding="utf-8") as f:
+        yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+

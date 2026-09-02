@@ -312,3 +312,24 @@ class MonitorRegistry:
 
     def list(self) -> List[Dict[str, Any]]:
         return [m.portal_summary() for m in self.monitors.values()]
+
+    async def add_host(self, host_cfg: HostConfig) -> None:
+        """运行时添加主机。"""
+        if host_cfg.id in self.monitors:
+            raise ValueError("host id 已存在: %s" % host_cfg.id)
+        monitor = HostMonitor(host_cfg, self.app_cfg.global_cfg)
+        self.monitors[host_cfg.id] = monitor
+        await monitor.start()
+        # 更新 app_cfg
+        self.app_cfg.hosts.append(host_cfg)
+        log.info("[%s] 主机已添加并开始监控", host_cfg.id)
+
+    async def remove_host(self, host_id: str) -> None:
+        """运行时删除主机。"""
+        if host_id not in self.monitors:
+            raise ValueError("host id 不存在: %s" % host_id)
+        monitor = self.monitors.pop(host_id)
+        await monitor.stop()
+        # 从 app_cfg 移除
+        self.app_cfg.hosts = [h for h in self.app_cfg.hosts if h.id != host_id]
+        log.info("[%s] 主机已删除并停止监控", host_id)

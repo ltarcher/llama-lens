@@ -272,17 +272,25 @@ class VllmPoller:
 
         # ---- MTP / 投机解码统计 ----
         st["mtp_acceptance_rate"] = _to_float(raw.get("vllm:spec_decode_mtp_acceptance_rate", {}).get("value"))
-        mtp_accepted = _to_int(_val("vllm:spec_decode_mtp_accepted"))
-        mtp_generated = _to_int(_val("vllm:spec_decode_mtp_generated"))
-        mtp_mean_len = _to_float(_val("vllm:spec_decode_mtp_mean_len"))
-        mtp_tps = _to_float(_val("vllm:spec_decode_success_rate"))
-        st["mtp_accepted"] = mtp_accepted
-        st["mtp_generated"] = mtp_generated
+        
+        # 从 Counter 指标获取 MTP 数据（1Cat-vLLM 指标名称）
+        draft_tokens_entry = raw.get("vllm:spec_decode_num_draft_tokens", {})
+        draft_tokens = _to_int(draft_tokens_entry.get("value"))
+        
+        accepted_tokens_entry = raw.get("vllm:spec_decode_num_accepted_tokens", {})
+        accepted_tokens = _to_int(accepted_tokens_entry.get("value"))
+        
+        mtp_mean_len = _to_float(raw.get("vllm:spec_decode_mtp_mean_len", {}).get("value"))
+        mtp_tps = _to_float(raw.get("vllm:spec_decode_success_rate", {}).get("value"))
+        
+        st["mtp_accepted"] = accepted_tokens
+        st["mtp_generated"] = draft_tokens
         st["mtp_mean_len"] = mtp_mean_len
         st["mtp_spec_decode_tps"] = mtp_tps
+        
         # 计算接受率（如果没有直接指标）
-        if st["mtp_acceptance_rate"] is None and mtp_generated and mtp_accepted:
-            st["mtp_acceptance_rate"] = mtp_accepted / mtp_generated if mtp_generated > 0 else None
+        if st["mtp_acceptance_rate"] is None and draft_tokens and accepted_tokens:
+            st["mtp_acceptance_rate"] = accepted_tokens / draft_tokens if draft_tokens > 0 else None
 
         # 调试：打印 raw 中所有指标名称（首次或首次有数据时）
         if not hasattr(self, '_debugged_metrics'):

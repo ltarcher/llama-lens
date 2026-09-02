@@ -260,6 +260,20 @@ class VllmPoller:
             gen_diff = max(0, gen_total - prev_gen)
             st["total_prompt_tps"] = round(prompt_diff / dt, 2)
             st["total_gen_tps"] = round(gen_diff / dt, 2)
+            # 计算请求级平均速度（用于更平滑的显示）
+            total_prompt_speed = 0.0
+            total_gen_speed = 0.0
+            req_count = 0
+            for req in st.get("requests", []):
+                ps = req.get("prompt_speed_tps", 0)
+                gs = req.get("gen_speed_tps", 0)
+                if ps > 0:
+                    total_prompt_speed += ps
+                    req_count += 1
+                if gs > 0:
+                    total_gen_speed += gs
+            st["avg_prompt_tps"] = round(total_prompt_speed / req_count, 2) if req_count > 0 else None
+            st["avg_gen_tps"] = round(total_gen_speed / req_count, 2) if req_count > 0 else None
         # 更新累计值（供下次差分）
         st["last_prompt_tokens"] = prompt_total
         st["last_gen_tokens"] = gen_total

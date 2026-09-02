@@ -60,12 +60,20 @@
       <div class="section-title">速度统计（总计）</div>
       <div class="grid2">
         <div class="kv">
-          <span class="k">Token 生成速度</span>
+          <span class="k">Token 生成速度（总）</span>
           <span class="v mono cyan">{{ totalGenTpsText }} <span class="unit">t/s</span></span>
         </div>
         <div class="kv">
-          <span class="k">预填充速度</span>
+          <span class="k">Token 生成速度（平均）</span>
+          <span class="v mono cyan">{{ avgGenTpsText }} <span class="unit">t/s</span></span>
+        </div>
+        <div class="kv">
+          <span class="k">预填充速度（总）</span>
           <span class="v mono green">{{ totalPromptTpsText }} <span class="unit">t/s</span></span>
+        </div>
+        <div class="kv">
+          <span class="k">预填充速度（平均）</span>
+          <span class="v mono green">{{ avgPromptTpsText }} <span class="unit">t/s</span></span>
         </div>
       </div>
 
@@ -306,6 +314,14 @@ const totalGenTpsText = computed(() => {
 })
 const totalPromptTpsText = computed(() => {
   const v = props.vllm && props.vllm.total_prompt_tps
+  return v === null || v === undefined ? '—' : v.toFixed(2)
+})
+const avgGenTpsText = computed(() => {
+  const v = props.vllm && props.vllm.avg_gen_tps
+  return v === null || v === undefined ? '—' : v.toFixed(2)
+})
+const avgPromptTpsText = computed(() => {
+  const v = props.vllm && props.vllm.avg_prompt_tps
   return v === null || v === undefined ? '—' : v.toFixed(2)
 })
 

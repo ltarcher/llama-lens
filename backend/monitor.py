@@ -194,8 +194,10 @@ class HostMonitor:
                 "running_requests", "waiting_requests",
                 "prompt_tokens_total", "generation_tokens_total",
                 "preemptions_total", "last_poll_ts",
-                # 速度统计
+                # 速度统计（总差分）
                 "total_gen_tps", "total_prompt_tps",
+                # 速度统计（请求级平均）
+                "avg_gen_tps", "avg_prompt_tps",
                 # 每个请求的统计
                 "requests",
                 # MTP / 投机解码统计

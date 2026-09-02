@@ -194,6 +194,13 @@ class HostMonitor:
                 "running_requests", "waiting_requests",
                 "prompt_tokens_total", "generation_tokens_total",
                 "preemptions_total", "last_poll_ts",
+                # 详细配置
+                "model_id", "model_path", "max_model_len",
+                "allow_sampling", "allow_logprobs", "allow_fine_tuning",
+                "prefix_caching", "kv_cache_dtype", "block_size",
+                "gpu_mem_utilization", "num_gpu_blocks",
+                "mamba_cache_dtype", "mamba_cache_mode",
+                "sliding_window", "engine_state",
             )}
 
         snap = {

@@ -13,11 +13,17 @@
       </div>
 
       <div class="models">
-        <div v-for="m in host.models" :key="m.name" class="model-row">
-          <span class="model-name" :class="{ muted: !host.online }">{{ m.name || '未加载模型' }}</span>
-          <span v-if="m.n_params" class="model-params mono dim">{{ fmtParams(m.n_params) }} 参数</span>
-        </div>
-        <div v-if="!host.models.length" class="model-row">
+        <template v-if="host.models.length">
+          <template v-for="m in host.models" :key="m.name">
+            <div class="model-row">
+              <span class="model-name" :class="{ muted: !host.online }">{{ m.name || '未加载模型' }}</span>
+              <span v-if="m.engine === 'vllm'" class="model-engine vllm">vLLM</span>
+              <span v-else class="model-engine llama">llama-server</span>
+            </div>
+            <span v-if="m.n_params" class="model-params mono dim">{{ fmtParams(m.n_params) }} 参数</span>
+          </template>
+        </template>
+        <div v-else class="model-row">
           <span class="model-name muted">未加载模型</span>
         </div>
       </div>
@@ -159,6 +165,9 @@ function valClass(v) {
 .model-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; min-height: 16px; }
 .model-name { font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .model-params { font-size: 11px; flex: none; }
+.model-engine { font-size: 9px; padding: 1px 5px; border-radius: 4px; flex: none; }
+.model-engine.llama { background: rgba(0, 229, 255, 0.12); color: var(--cyan); border: 1px solid rgba(0, 229, 255, 0.3); }
+.model-engine.vllm { background: rgba(0, 255, 157, 0.12); color: var(--green); border: 1px solid rgba(0, 255, 157, 0.3); }
 .speed {
   display: flex;
   align-items: flex-end;

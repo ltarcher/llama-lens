@@ -262,6 +262,17 @@ class HostMonitor:
         models = ll.get("models") or []
         if not models and ll.get("model"):
             models = [ll["model"]]
+        
+        # 添加 vLLM 模型
+        vllm = snap.get("vllm")
+        if vllm and vllm.get("online"):
+            vllm_model = {
+                "name": vllm.get("model_id", vllm.get("model_name", "")),
+                "n_params": None,
+                "engine": "vllm",
+            }
+            models.append(vllm_model)
+        
         mem = hm.get("mem") or {}
         gpus = []
         for g in hm.get("gpus") or []:
@@ -273,7 +284,6 @@ class HostMonitor:
             })
         spark = downsample(self.ring_llama.window("gen_speed", 60, time.time()), 30)
         alerts = snap.get("alerts", [])
-        vllm = snap.get("vllm")
         return {
             "id": self.cfg.id,
             "name": self.cfg.name,
@@ -281,7 +291,7 @@ class HostMonitor:
             "llama_ok": ll.get("online", False),
             "vllm_online": bool(vllm and vllm.get("online")) if vllm else None,
             "ssh_ok": hm.get("reachable", False),
-            "models": models,  # 多模型列表
+            "models": models,  # 多模型列表（llama-server + vLLM）
             "gen_speed_tps": ll.get("gen_speed_tps", 0.0),
             "speed_source": ll.get("speed_source", "api"),
             "gpus": gpus,

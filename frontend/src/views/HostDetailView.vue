@@ -78,14 +78,6 @@
           <div v-else class="glass placeholder"><span class="icon">▣</span>数据不可用（SSH 断开）</div>
         </section>
 
-        <!-- ============ vLLM 区 ============ -->
-        <section v-if="vllm">
-          <div class="section-title">vLLM 服务</div>
-          <div class="vllm-grid">
-            <VllmPanel :vllm="vllm" />
-          </div>
-        </section>
-
         <!-- ============ 实时生成任务区 ============ -->
         <section>
           <div class="section-title">实时生成任务</div>
@@ -123,6 +115,10 @@
           <div class="model-grid">
             <ModelInfoCard :model="model" />
             <SlotTable :slots="slots" />
+          </div>
+          <!-- vLLM 服务：配置了 vllm 的机型在此展示，随 vLLM 在线/离线切换 -->
+          <div v-if="vllm" class="model-grid" style="margin-top: 12px">
+            <VllmPanel :vllm="vllm" />
           </div>
         </section>
 
@@ -593,11 +589,6 @@ onBeforeUnmount(() => {
 }
 .sys-grid:last-child { margin-bottom: 0; }
 .model-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-}
-.vllm-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;

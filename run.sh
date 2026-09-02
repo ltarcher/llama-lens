@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# llama灵境 启动脚本：构建前端（若缺失）+ 启动 FastAPI 单进程
+# LLM灵境 启动脚本：构建前端（若缺失）+ 启动 FastAPI 单进程
 set -euo pipefail
 cd "$(dirname "$0")"
 

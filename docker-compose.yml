@@ -1,4 +1,4 @@
-# llama灵境 Docker 部署
+# LLM灵境 Docker 部署
 # 用法：
 #   1. cp config/hosts.example.yaml config/hosts.yaml   # 填写主机信息
 #   2. cp .env.example .env                             # 填写 SSH 密码

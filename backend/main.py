@@ -1,4 +1,4 @@
-"""llama灵境 FastAPI 入口。
+"""LLM灵境 FastAPI 入口。
 
 - 单进程 :8000（env PORT 可配置）；lifespan 启动/停止 MonitorRegistry。
 - 托管 frontend/dist（SPA fallback → index.html）。
@@ -54,16 +54,16 @@ def create_app(base_dir: Optional[str] = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        log.info("llama灵境 启动：端口 %d，主机 %s", app_cfg.port,
+        log.info("LLM灵境 启动：端口 %d，主机 %s", app_cfg.port,
                  [h.id for h in app_cfg.hosts] or "(无)")
         await registry.start()
         try:
             yield
         finally:
             await registry.stop()
-            log.info("llama灵境 已停止")
+            log.info("LLM灵境 已停止")
 
-    app = FastAPI(title="llama灵境", lifespan=lifespan)
+    app = FastAPI(title="LLM灵境", lifespan=lifespan)
     app.state.registry = registry
     app.include_router(api_router)
     app.include_router(ws_router)

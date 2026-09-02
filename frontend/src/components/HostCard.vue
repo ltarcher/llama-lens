@@ -12,9 +12,14 @@
         <span v-if="host.alerts_count > 0" class="alert-badge mono">{{ host.alerts_count }}</span>
       </div>
 
-      <div class="model">
-        <span class="model-name" :class="{ muted: !host.online }">{{ host.model_name || '未加载模型' }}</span>
-        <span v-if="host.n_params" class="model-params mono dim">{{ fmtParams(host.n_params) }} 参数</span>
+      <div class="models">
+        <div v-for="m in host.models" :key="m.name" class="model-row">
+          <span class="model-name" :class="{ muted: !host.online }">{{ m.name || '未加载模型' }}</span>
+          <span v-if="m.n_params" class="model-params mono dim">{{ fmtParams(m.n_params) }} 参数</span>
+        </div>
+        <div v-if="!host.models.length" class="model-row">
+          <span class="model-name muted">未加载模型</span>
+        </div>
       </div>
 
       <div class="speed" :class="{ muted: !host.online }">
@@ -150,8 +155,9 @@ function valClass(v) {
   padding: 0 5px;
   box-shadow: 0 0 10px rgba(255, 59, 92, 0.6);
 }
-.model { display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px; min-height: 18px; }
-.model-name { font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.models { margin-bottom: 12px; }
+.model-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; min-height: 16px; }
+.model-name { font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .model-params { font-size: 11px; flex: none; }
 .speed {
   display: flex;

@@ -259,8 +259,9 @@ class HostMonitor:
         snap = self.snapshot()
         ll = snap["llama"]
         hm = snap["host_metrics"]
-        # 支持多模型：返回第一个模型的信息用于兼容
-        model = (ll.get("models") or [{}])[0] if ll.get("models") else (ll.get("model") or {})
+        models = ll.get("models") or []
+        if not models and ll.get("model"):
+            models = [ll["model"]]
         mem = hm.get("mem") or {}
         gpus = []
         for g in hm.get("gpus") or []:
@@ -280,8 +281,7 @@ class HostMonitor:
             "llama_ok": ll.get("online", False),
             "vllm_online": bool(vllm and vllm.get("online")) if vllm else None,
             "ssh_ok": hm.get("reachable", False),
-            "model_name": model.get("name", ""),
-            "n_params": model.get("n_params"),
+            "models": models,  # 多模型列表
             "gen_speed_tps": ll.get("gen_speed_tps", 0.0),
             "speed_source": ll.get("speed_source", "api"),
             "gpus": gpus,

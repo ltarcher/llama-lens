@@ -1,4 +1,4 @@
-# llama灵境 主机配置模板
+# LLM灵境 主机配置模板
 # 用法：cp config/hosts.example.yaml config/hosts.yaml 后填写。
 # config/hosts.yaml 与 .env 均含敏感信息，已被 .gitignore 排除，勿提交。
 #

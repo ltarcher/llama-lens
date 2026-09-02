@@ -66,6 +66,40 @@
               :zones="mtpZones"
               :zone-colors="mtpZoneColors"
             />
+            <!-- vLLM 专属仪表（仅配置了 vLLM 时显示） -->
+            <BarCard
+              v-if="vllm && vllm.online"
+              title="vLLM 生成速度"
+              :value="vllmGenTps"
+              unit="tok/s"
+              :spark="sparkVllmGen"
+              :sub="vllmGenSub"
+            />
+            <BarCard
+              v-if="vllm && vllm.online"
+              title="vLLM 预填充速度"
+              :value="vllmPromptTps"
+              unit="tok/s"
+              :spark="sparkVllmPrompt"
+              :sub="vllmPromptSub"
+            />
+            <GaugeCard
+              v-if="vllm && vllm.online"
+              title="vLLM MTP 接受率"
+              :value="vllmMtpPct"
+              unit="%"
+              :level="vllmMtpLevel"
+              :sub="vllmMtpSub"
+              :zones="mtpZones"
+              :zone-colors="mtpZoneColors"
+            />
+            <BarCard
+              v-if="vllm && vllm.online"
+              title="vLLM 总请求速度"
+              :value="vllmTotalRequests"
+              unit="req/s"
+              :sub="vllmTotalRequestsSub"
+            />
           </div>
         </section>
 
@@ -209,6 +243,59 @@ const events = computed(() => (snap.value ? snap.value.events : []))
 const llamaOnline = computed(() => !!(snap.value && snap.value.llama.online))
 const sshOk = computed(() => !!(snap.value && snap.value.host_metrics.reachable))
 const vllm = computed(() => (snap.value && snap.value.vllm) || null)
+
+// vLLM 专属指标
+const vllmGenTps = computed(() => {
+  if (!vllm.value || !vllm.value.online) return null
+  return vllm.value.total_gen_tps || 0
+})
+const vllmPromptTps = computed(() => {
+  if (!vllm.value || !vllm.value.online) return null
+  return vllm.value.total_prompt_tps || 0
+})
+const vllmMtpPct = computed(() => {
+  if (!vllm.value || !vllm.value.online) return null
+  const a = vllm.value.mtp_acceptance_rate
+  return a === null || a === undefined ? null : a * 100
+})
+const vllmMtpLevel = computed(() => {
+  if (!vllm.value || !vllm.value.online) return 'normal'
+  const a = vllm.value.mtp_acceptance_rate
+  if (a === null || a === undefined) return 'normal'
+  if (a < 0.65) return 'danger'
+  if (a < 0.8) return 'warn'
+  return 'normal'
+})
+const vllmTotalRequests = computed(() => {
+  if (!vllm.value || !vllm.value.online) return null
+  return (vllm.value.running_requests || 0) + (vllm.value.waiting_requests || 0)
+})
+const vllmGenSub = computed(() => {
+  if (!vllm.value || !vllm.value.online) return ''
+  const reqs = vllm.value.requests || []
+  if (!reqs.length) return '无活跃请求'
+  return `${reqs.length} 个活跃请求`
+})
+const vllmPromptSub = computed(() => {
+  if (!vllm.value || !vllm.value.online) return ''
+  const reqs = vllm.value.requests || []
+  if (!reqs.length) return '无活跃请求'
+  return `${reqs.filter(r => r.prompt_tokens > 0).length} 个 Prompt 中`
+})
+const vllmMtpSub = computed(() => {
+  if (!vllm.value || !vllm.value.online) return ''
+  const a = vllm.value.mtp_accepted
+  const g = vllm.value.mtp_generated
+  const ml = vllm.value.mtp_mean_len
+  if (a === null || a === undefined || g === null || g === undefined) return ''
+  return `${fmtNum(a)} / ${fmtNum(g)} · mean ${ml === null || ml === undefined ? '—' : ml.toFixed(2)}`
+})
+const vllmTotalRequestsSub = computed(() => {
+  if (!vllm.value || !vllm.value.online) return ''
+  const running = vllm.value.running_requests || 0
+  const waiting = vllm.value.waiting_requests || 0
+  return `运行中 ${running} · 等待中 ${waiting}`
+})
 
 // 当前主机生成速度同步到全局：浏览器标签页标题（App.vue）与 Terminal 窗口标题栏
 // （TerminalFrame.vue）据此展示，使详情页也能看到速度（BrandBar 只覆盖门户页）。
@@ -414,6 +501,23 @@ function mapTail(name, fn) {
 const sparkCtx = computed(() => mapTail('ctx_used', (v) => v))
 const sparkMtp = computed(() => mapTail('mtp_acceptance', (v) => v * 100))
 
+// vLLM sparklines（从请求统计提取）
+const sparkVllmGen = computed(() => {
+  if (!vllm.value || !vllm.value.online) return []
+  const reqs = vllm.value.requests || []
+  if (!reqs.length) return []
+  // 计算总生成速度（所有请求的 gen_speed_tps 之和）
+  const total = reqs.reduce((sum, r) => sum + (r.gen_speed_tps || 0), 0)
+  return [[Date.now() / 1000, total]]
+})
+const sparkVllmPrompt = computed(() => {
+  if (!vllm.value || !vllm.value.online) return []
+  const reqs = vllm.value.requests || []
+  if (!reqs.length) return []
+  const total = reqs.reduce((sum, r) => sum + (r.prompt_speed_tps || 0), 0)
+  return [[Date.now() / 1000, total]]
+})
+
 // ---------------- 趋势图 ----------------
 const windows = [
   { s: 300, label: '5m' },
@@ -568,6 +672,11 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
+}
+@media (min-width: 1800px) {
+  .gauge-row {
+    grid-template-columns: repeat(8, 1fr);
+  }
 }
 .task-row {
   display: grid;

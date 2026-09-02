@@ -194,6 +194,13 @@ class HostMonitor:
                 "running_requests", "waiting_requests",
                 "prompt_tokens_total", "generation_tokens_total",
                 "preemptions_total", "last_poll_ts",
+                # 速度统计
+                "total_gen_tps", "total_prompt_tps",
+                # 每个请求的统计
+                "requests",
+                # MTP / 投机解码统计
+                "mtp_acceptance_rate", "mtp_accepted", "mtp_generated",
+                "mtp_mean_len", "mtp_spec_decode_tps",
                 # 详细配置
                 "model_id", "model_path", "max_model_len",
                 "allow_sampling", "allow_logprobs", "allow_fine_tuning",

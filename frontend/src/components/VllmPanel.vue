@@ -55,6 +55,65 @@
         <div class="kv"><span class="k">Mamba 数据类型</span><span class="v mono">{{ mambaDtypeText }}</span></div>
         <div class="kv"><span class="k">Mamba 缓存模式</span><span class="v mono">{{ mambaModeText }}</span></div>
       </div>
+
+      <!-- ============ 速度统计（总计） ============ -->
+      <div class="section-title">速度统计（总计）</div>
+      <div class="grid2">
+        <div class="kv">
+          <span class="k">Token 生成速度</span>
+          <span class="v mono cyan">{{ totalGenTpsText }} <span class="unit">t/s</span></span>
+        </div>
+        <div class="kv">
+          <span class="k">预填充速度</span>
+          <span class="v mono green">{{ totalPromptTpsText }} <span class="unit">t/s</span></span>
+        </div>
+      </div>
+
+      <!-- ============ MTP 统计 ============ -->
+      <div class="section-title">MTP / 投机解码</div>
+      <div class="kv-grid">
+        <div class="kv" v-if="mtpAcceptance !== null && mtpAcceptance !== undefined">
+          <span class="k">MTP 接受率</span>
+          <span class="v mono" :class="mtpClass">{{ mtpAcceptanceText }}</span>
+        </div>
+        <div class="kv" v-if="mtpAccepted !== null && mtpAccepted !== undefined">
+          <span class="k">接受 / 生成</span>
+          <span class="v mono">{{ fmtNum(mtpAccepted) }} / {{ fmtNum(mtpGenerated) }}</span>
+        </div>
+        <div class="kv" v-if="mtpMeanLen !== null && mtpMeanLen !== undefined">
+          <span class="k">平均接受长度</span>
+          <span class="v mono">{{ mtpMeanLen.toFixed(2) }}</span>
+        </div>
+        <div class="kv" v-if="mtpSpecDecodeTps !== null && mtpSpecDecodeTps !== undefined">
+          <span class="k">投机解码速度</span>
+          <span class="v mono">{{ mtpSpecDecodeTps.toFixed(2) }} <span class="unit">t/s</span></span>
+        </div>
+      </div>
+
+      <!-- ============ 每个请求的统计 ============ -->
+      <div class="section-title" v-if="requests.length">
+        每个请求的统计（{{ requests.length }} 个请求）
+      </div>
+      <div v-if="requests.length" class="request-table">
+        <div class="request-header">
+          <span class="col-id">请求 ID</span>
+          <span class="col-prompt">Prompt Tokens</span>
+          <span class="col-gen">生成 Tokens</span>
+          <span class="col-prompt-speed">Prompt 速度</span>
+          <span class="col-gen-speed">生成速度</span>
+          <span class="col-prompt-latency">Prompt 延迟</span>
+          <span class="col-gen-latency">生成延迟</span>
+        </div>
+        <div v-for="req in requests" :key="req.request_id" class="request-row glass">
+          <span class="col-id mono">{{ req.request_id }}</span>
+          <span class="col-prompt mono">{{ fmtNum(req.prompt_tokens) }}</span>
+          <span class="col-gen mono cyan">{{ fmtNum(req.generation_tokens) }}</span>
+          <span class="col-prompt-speed mono green">{{ req.prompt_speed_tps === null ? '—' : req.prompt_speed_tps.toFixed(1) }} t/s</span>
+          <span class="col-gen-speed mono cyan">{{ req.gen_speed_tps === null ? '—' : req.gen_speed_tps.toFixed(1) }} t/s</span>
+          <span class="col-prompt-latency mono">{{ req.prompt_latency_avg === null ? '—' : req.prompt_latency_avg.toFixed(2) }}s</span>
+          <span class="col-gen-latency mono">{{ req.gen_latency_avg === null ? '—' : req.gen_latency_avg.toFixed(3) }}s/token</span>
+        </div>
+      </div>
     </template>
     <div v-else class="placeholder"><span class="icon">⌁</span>vLLM 离线或无数据</div>
   </div>
@@ -171,6 +230,38 @@ const gpuCapText = computed(() => {
 const kvDtypeText = computed(() => (props.vllm && props.vllm.kv_cache_dtype) || '—')
 const mambaDtypeText = computed(() => (props.vllm && props.vllm.mamba_cache_dtype) || '—')
 const mambaModeText = computed(() => (props.vllm && props.vllm.mamba_cache_mode) || '—')
+
+// ---------------- 速度统计（总计） ----------------
+const totalGenTpsText = computed(() => {
+  const v = props.vllm && props.vllm.total_gen_tps
+  return v === null || v === undefined ? '—' : v.toFixed(2)
+})
+const totalPromptTpsText = computed(() => {
+  const v = props.vllm && props.vllm.total_prompt_tps
+  return v === null || v === undefined ? '—' : v.toFixed(2)
+})
+
+// ---------------- MTP 统计 ----------------
+const mtpAcceptance = computed(() => props.vllm && props.vllm.mtp_acceptance_rate)
+const mtpAccepted = computed(() => props.vllm && props.vllm.mtp_accepted)
+const mtpGenerated = computed(() => props.vllm && props.vllm.mtp_generated)
+const mtpMeanLen = computed(() => props.vllm && props.vllm.mtp_mean_len)
+const mtpSpecDecodeTps = computed(() => props.vllm && props.vllm.mtp_spec_decode_tps)
+const mtpAcceptanceText = computed(() => {
+  const a = mtpAcceptance.value
+  if (a === null || a === undefined) return '—'
+  return (a * 100).toFixed(1) + '%'
+})
+const mtpClass = computed(() => {
+  const a = mtpAcceptance.value
+  if (a === null || a === undefined) return ''
+  if (a < 0.65) return 'lv-danger'
+  if (a < 0.8) return 'lv-warn'
+  return 'lv-green'
+})
+
+// ---------------- 每个请求的统计 ----------------
+const requests = computed(() => (props.vllm && props.vllm.requests) || [])
 </script>
 
 <style scoped>
@@ -202,4 +293,32 @@ const mambaModeText = computed(() => (props.vllm && props.vllm.mamba_cache_mode)
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; }
 .grid2 .kv { padding: 3px 0; font-size: 12px; }
 .small { font-size: 11px; }
+.unit { font-size: 10px; color: var(--text-faint); }
+.cyan { color: var(--cyan); }
+.green { color: var(--green); }
+.request-table { margin-top: 6px; }
+.request-header {
+  display: grid;
+  grid-template-columns: 80px 100px 100px 90px 90px 90px 100px;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--text-faint);
+  letter-spacing: 1px;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(143, 163, 200, 0.15);
+}
+.request-row {
+  display: grid;
+  grid-template-columns: 80px 100px 100px 90px 90px 90px 100px;
+  gap: 4px;
+  font-size: 11px;
+  padding: 4px 8px;
+  margin-top: 2px;
+  border-radius: 4px;
+}
+.request-row > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 </style>

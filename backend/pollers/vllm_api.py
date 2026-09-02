@@ -36,6 +36,31 @@ class VllmPoller:
       - preemptions_total: int (vllm:num_preemptions_total)
       - last_poll_ts: float (time.time() of last successful poll)
 
+      速度统计（从累计 token 差分计算）：
+      - total_gen_tps: float — 总生成速度 (tokens/s)
+      - total_prompt_tps: float — 总预填充速度 (tokens/s)
+      - last_prompt_tokens: int — 上次采集的 prompt token 累计
+      - last_gen_tokens: int — 上次采集的生成 token 累计
+      - last_poll_ts_prev: float — 上次采集时间（用于差分）
+
+      每个请求的统计（来自 vllm:request_prompt_tokens / vllm:request_generation_tokens）：
+      - requests: list[dict] — 每个请求的 token 统计
+        - prompt_tokens: int — prompt token 数
+        - generation_tokens: int — 生成 token 数
+        - prompt_tokens_total: int — 累计 prompt token
+        - generation_tokens_total: int — 累计生成 token
+        - prompt_speed_tps: float — prompt 速度 (tokens/s)
+        - gen_speed_tps: float — 生成速度 (tokens/s)
+        - prompt_latency_avg: float — 平均 prompt 延迟 (s)
+        - gen_latency_avg: float — 平均生成延迟 (s/token)
+
+      MTP / 投机解码统计：
+      - mtp_acceptance_rate: float — MTP 接受率 (0-1)
+      - mtp_accepted: int — 被接受的 draft token 数
+      - mtp_generated: int — 生成的 draft token 总数
+      - mtp_mean_len: float — 平均接受长度
+      - mtp_spec_decode_tps: float — 投机解码速度 (tokens/s)
+
     详细配置（来自 vllm:cache_config_info 的标签 + /v1/models）：
       - model_id / model_path / max_model_len / allow_sampling /
         allow_logprobs / allow_fine_tuning  （/v1/models）
@@ -61,6 +86,20 @@ class VllmPoller:
             "generation_tokens_total": 0,
             "preemptions_total": 0,
             "last_poll_ts": 0.0,
+            # 速度统计（差分计算）
+            "total_gen_tps": 0.0,
+            "total_prompt_tps": 0.0,
+            "last_prompt_tokens": 0,
+            "last_gen_tokens": 0,
+            "last_poll_ts_prev": 0.0,
+            # 每个请求的统计
+            "requests": [],
+            # MTP / 投机解码统计
+            "mtp_acceptance_rate": None,
+            "mtp_accepted": None,
+            "mtp_generated": None,
+            "mtp_mean_len": None,
+            "mtp_spec_decode_tps": None,
             # 详细配置（来自 cache_config_info 标签 + /v1/models）
             "model_id": "",
             "model_path": "",
@@ -204,9 +243,44 @@ class VllmPoller:
         st["running_requests"] = _to_int(_val("vllm:num_requests_running"))
         st["waiting_requests"] = _to_int(_val("vllm:num_requests_waiting"))
         # 累计计数
-        st["prompt_tokens_total"] = _to_int(_val("vllm:prompt_tokens_total"))
-        st["generation_tokens_total"] = _to_int(_val("vllm:generation_tokens_total"))
+        prompt_total = _to_int(_val("vllm:prompt_tokens_total"))
+        gen_total = _to_int(_val("vllm:generation_tokens_total"))
+        st["prompt_tokens_total"] = prompt_total
+        st["generation_tokens_total"] = gen_total
         st["preemptions_total"] = _to_int(_val("vllm:num_preemptions_total"))
+
+        # ---- 速度统计（差分计算） ----
+        now = st["last_poll_ts"]
+        prev = st["last_poll_ts_prev"]
+        dt = now - prev if now > 0 and prev > 0 else 0.0
+        if dt > 0:
+            prev_prompt = st.get("last_prompt_tokens", 0)
+            prev_gen = st.get("last_gen_tokens", 0)
+            prompt_diff = max(0, prompt_total - prev_prompt)
+            gen_diff = max(0, gen_total - prev_gen)
+            st["total_prompt_tps"] = round(prompt_diff / dt, 2)
+            st["total_gen_tps"] = round(gen_diff / dt, 2)
+        # 更新累计值（供下次差分）
+        st["last_prompt_tokens"] = prompt_total
+        st["last_gen_tokens"] = gen_total
+        st["last_poll_ts_prev"] = st["last_poll_ts"]
+
+        # ---- 每个请求的统计 ----
+        st["requests"] = self._extract_requests(raw)
+
+        # ---- MTP / 投机解码统计 ----
+        st["mtp_acceptance_rate"] = _to_float(raw.get("vllm:spec_decode_mtp_acceptance_rate", {}).get("value"))
+        mtp_accepted = _to_int(_val("vllm:spec_decode_mtp_accepted"))
+        mtp_generated = _to_int(_val("vllm:spec_decode_mtp_generated"))
+        mtp_mean_len = _to_float(_val("vllm:spec_decode_mtp_mean_len"))
+        mtp_tps = _to_float(_val("vllm:spec_decode_success_rate"))
+        st["mtp_accepted"] = mtp_accepted
+        st["mtp_generated"] = mtp_generated
+        st["mtp_mean_len"] = mtp_mean_len
+        st["mtp_spec_decode_tps"] = mtp_tps
+        # 计算接受率（如果没有直接指标）
+        if st["mtp_acceptance_rate"] is None and mtp_generated and mtp_accepted:
+            st["mtp_acceptance_rate"] = mtp_accepted / mtp_generated if mtp_generated > 0 else None
 
         # ---- 详细配置（来自 vllm:cache_config_info 的标签）----
         cc = raw.get("vllm:cache_config_info", {}).get("labels") or {}
@@ -236,6 +310,89 @@ class VllmPoller:
                 engine_state = labels.get("sleep_state", "")
                 break
         st["engine_state"] = engine_state
+
+    def _extract_requests(self, raw: Dict[str, Dict[str, Any]]) -> list:
+        """从 vLLM Prometheus 指标中提取每个请求的统计。
+
+        指标来源：
+        - vllm:request_prompt_tokens{request_id=...} — 当前请求的 prompt token 数
+        - vllm:request_generation_tokens{request_id=...} — 当前请求的生成 token 数
+        - vllm:request_prompt_tokens_total{request_id=...} — 累计 prompt token
+        - vllm:request_generation_tokens_total{request_id=...} — 累计生成 token
+        - vllm:request_prompt_latency{request_id=...} — prompt 阶段总延迟
+        - vllm:request_generation_latency{request_id=...} — 生成阶段总延迟
+        """
+        requests = []
+
+        # 收集所有 request_id
+        request_ids = set()
+        for metric_name in ["vllm:request_prompt_tokens", "vllm:request_generation_tokens",
+                            "vllm:request_prompt_tokens_total", "vllm:request_generation_tokens_total"]:
+            series = raw.get(metric_name, {}).get("series", [])
+            for labels, _ in series:
+                rid = labels.get("request_id")
+                if rid:
+                    request_ids.add(rid)
+
+        if not request_ids:
+            return []
+
+        # 对每个请求提取数据
+        for rid in request_ids:
+            req = {
+                "request_id": rid,
+                "prompt_tokens": None,
+                "generation_tokens": None,
+                "prompt_tokens_total": None,
+                "generation_tokens_total": None,
+                "prompt_latency_avg": None,
+                "gen_latency_avg": None,
+                "prompt_speed_tps": None,
+                "gen_speed_tps": None,
+            }
+
+            # 当前 token 数
+            for metric, key in [
+                ("vllm:request_prompt_tokens", "prompt_tokens"),
+                ("vllm:request_generation_tokens", "generation_tokens"),
+            ]:
+                entry = raw.get(metric, {})
+                for labels, value in entry.get("series", []):
+                    if labels.get("request_id") == rid:
+                        req[key] = _to_int(value)
+                        break
+
+            # 累计 token 数
+            for metric, key in [
+                ("vllm:request_prompt_tokens_total", "prompt_tokens_total"),
+                ("vllm:request_generation_tokens_total", "generation_tokens_total"),
+            ]:
+                entry = raw.get(metric, {})
+                for labels, value in entry.get("series", []):
+                    if labels.get("request_id") == rid:
+                        req[key] = _to_int(value)
+                        break
+
+            # 平均延迟（s）
+            for metric, key in [
+                ("vllm:request_prompt_latency", "prompt_latency_avg"),
+                ("vllm:request_generation_latency", "gen_latency_avg"),
+            ]:
+                entry = raw.get(metric, {})
+                for labels, value in entry.get("series", []):
+                    if labels.get("request_id") == rid:
+                        req[key] = _to_float(value)
+                        break
+
+            # 计算速度
+            if req["prompt_latency_avg"] and req["prompt_tokens"]:
+                req["prompt_speed_tps"] = round(req["prompt_tokens"] / req["prompt_latency_avg"], 2)
+            if req["gen_latency_avg"] and req["generation_tokens"]:
+                req["gen_speed_tps"] = round(req["generation_tokens"] / req["gen_latency_avg"], 2)
+
+            requests.append(req)
+
+        return requests
 
     @staticmethod
     def _parse_prometheus(text: str) -> Dict[str, Dict[str, Any]]:

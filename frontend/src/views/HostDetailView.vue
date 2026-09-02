@@ -296,6 +296,12 @@ const vllmTotalRequestsSub = computed(() => {
   const waiting = vllm.value.waiting_requests || 0
   return `运行中 ${running} · 等待中 ${waiting}`
 })
+const vllmReqStats = computed(() => {
+  if (!vllm.value || !vllm.value.online) return null
+  const reqs = vllm.value.requests || []
+  if (!reqs.length) return null
+  return reqs[0]
+})
 
 // 当前主机生成速度同步到全局：浏览器标签页标题（App.vue）与 Terminal 窗口标题栏
 // （TerminalFrame.vue）据此展示，使详情页也能看到速度（BrandBar 只覆盖门户页）。

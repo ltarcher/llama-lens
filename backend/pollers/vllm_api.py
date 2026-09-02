@@ -267,6 +267,8 @@ class VllmPoller:
 
         # ---- 每个请求的统计 ----
         st["requests"] = self._extract_requests(raw)
+        if st["requests"]:
+            log.debug("[%s] 提取到 %d 个请求的统计", self.cfg.id, len(st["requests"]))
 
         # ---- MTP / 投机解码统计 ----
         st["mtp_acceptance_rate"] = _to_float(raw.get("vllm:spec_decode_mtp_acceptance_rate", {}).get("value"))
@@ -281,6 +283,12 @@ class VllmPoller:
         # 计算接受率（如果没有直接指标）
         if st["mtp_acceptance_rate"] is None and mtp_generated and mtp_accepted:
             st["mtp_acceptance_rate"] = mtp_accepted / mtp_generated if mtp_generated > 0 else None
+
+        # 调试：打印 raw 中所有指标名称（首次或首次有数据时）
+        if not hasattr(self, '_debugged_metrics'):
+            self._debugged_metrics = True
+            log.debug("[%s] Prometheus 指标列表 (%d 个): %s", 
+                     self.cfg.id, len(raw), sorted(raw.keys()))
 
         # ---- 详细配置（来自 vllm:cache_config_info 的标签）----
         cc = raw.get("vllm:cache_config_info", {}).get("labels") or {}
@@ -312,87 +320,105 @@ class VllmPoller:
         st["engine_state"] = engine_state
 
     def _extract_requests(self, raw: Dict[str, Dict[str, Any]]) -> list:
-        """从 vLLM Prometheus 指标中提取每个请求的统计。
+        """从 vLLM Prometheus 指标中提取请求统计。
 
-        指标来源：
-        - vllm:request_prompt_tokens{request_id=...} — 当前请求的 prompt token 数
-        - vllm:request_generation_tokens{request_id=...} — 当前请求的生成 token 数
-        - vllm:request_prompt_tokens_total{request_id=...} — 累计 prompt token
-        - vllm:request_generation_tokens_total{request_id=...} — 累计生成 token
-        - vllm:request_prompt_latency{request_id=...} — prompt 阶段总延迟
-        - vllm:request_generation_latency{request_id=...} — 生成阶段总延迟
+        vLLM 的请求级指标是 Histogram 类型，不是带 request_id 标签的 Gauge。
+        因此这里提取的是请求的聚合统计（来自 Histogram buckets），而非每个请求的独立指标。
+        
+        指标来源（兼容标准 vLLM 和 1Cat-vLLM）：
+        - vllm:num_prompt_tokens_request{le="..."} — prompt token 数分布（1Cat-vLLM）
+        - vllm:request_prompt_tokens{le="..."} — prompt token 数分布（标准 vLLM）
+        - vllm:num_generation_tokens_request{le="..."} — 生成 token 数分布（1Cat-vLLM）
+        - vllm:request_generation_tokens{le="..."} — 生成 token 数分布（标准 vLLM）
+        - vllm:time_to_first_token_seconds{le="..."} — TTFT 分布
+        - vllm:e2e_request_latency_seconds{le="..."} — 端到端延迟分布
+        - vllm:prefill_time_request{le="..."} — prefill 时间分布
+        - vllm:decode_time_request{le="..."} — decode 时间分布
         """
-        requests = []
-
-        # 收集所有 request_id
-        request_ids = set()
-        for metric_name in ["vllm:request_prompt_tokens", "vllm:request_generation_tokens",
-                            "vllm:request_prompt_tokens_total", "vllm:request_generation_tokens_total"]:
-            series = raw.get(metric_name, {}).get("series", [])
-            for labels, _ in series:
-                rid = labels.get("request_id")
-                if rid:
-                    request_ids.add(rid)
-
-        if not request_ids:
-            return []
-
-        # 对每个请求提取数据
-        for rid in request_ids:
-            req = {
-                "request_id": rid,
-                "prompt_tokens": None,
-                "generation_tokens": None,
-                "prompt_tokens_total": None,
-                "generation_tokens_total": None,
-                "prompt_latency_avg": None,
-                "gen_latency_avg": None,
-                "prompt_speed_tps": None,
-                "gen_speed_tps": None,
-            }
-
-            # 当前 token 数
-            for metric, key in [
-                ("vllm:request_prompt_tokens", "prompt_tokens"),
-                ("vllm:request_generation_tokens", "generation_tokens"),
-            ]:
-                entry = raw.get(metric, {})
-                for labels, value in entry.get("series", []):
-                    if labels.get("request_id") == rid:
-                        req[key] = _to_int(value)
+        # 从 Histogram 中提取 p50/p90/p99 分位数
+        def _hist_percentiles(metric_name: str) -> dict:
+            """从 Histogram 指标中提取 p50/p90/p99 值。"""
+            entry = raw.get(metric_name, {})
+            series = entry.get("series", [])
+            buckets = {}
+            for labels, value in series:
+                le = labels.get("le")
+                if le and le != "+Inf":
+                    try:
+                        buckets[float(le)] = value
+                    except (ValueError, TypeError):
+                        pass
+            if not buckets:
+                return {"p50": None, "p90": None, "p99": None}
+            
+            sorted_buckets = sorted(buckets.items())
+            result = {}
+            for pct, target in [("p50", 0.5), ("p90", 0.9), ("p99", 0.99)]:
+                # 找到最接近目标的 bucket
+                closest = None
+                for val, count in sorted_buckets:
+                    if val >= target * max(buckets.keys()):
+                        closest = count
                         break
+                if closest is None:
+                    closest = sorted_buckets[-1][1] if sorted_buckets else None
+                result[pct] = _to_float(closest)
+            return result
 
-            # 累计 token 数
-            for metric, key in [
-                ("vllm:request_prompt_tokens_total", "prompt_tokens_total"),
-                ("vllm:request_generation_tokens_total", "generation_tokens_total"),
-            ]:
-                entry = raw.get(metric, {})
-                for labels, value in entry.get("series", []):
-                    if labels.get("request_id") == rid:
-                        req[key] = _to_int(value)
-                        break
+        # 提取请求统计（尝试 1Cat-vLLM 命名，回退到标准 vLLM 命名）
+        def _hist_percentiles_fallback(name_1cat: str, name_std: str) -> dict:
+            """尝试多个指标名称，返回第一个有数据的。"""
+            result = _hist_percentiles(name_1cat)
+            if result["p50"] is not None:
+                return result
+            return _hist_percentiles(name_std)
 
-            # 平均延迟（s）
-            for metric, key in [
-                ("vllm:request_prompt_latency", "prompt_latency_avg"),
-                ("vllm:request_generation_latency", "gen_latency_avg"),
-            ]:
-                entry = raw.get(metric, {})
-                for labels, value in entry.get("series", []):
-                    if labels.get("request_id") == rid:
-                        req[key] = _to_float(value)
-                        break
+        prompt_stats = _hist_percentiles_fallback(
+            "vllm:num_prompt_tokens_request", "vllm:request_prompt_tokens")
+        gen_stats = _hist_percentiles_fallback(
+            "vllm:num_generation_tokens_request", "vllm:request_generation_tokens")
+        ttft_stats = _hist_percentiles("vllm:time_to_first_token_seconds")
+        e2e_stats = _hist_percentiles("vllm:e2e_request_latency_seconds")
+        prefill_stats = _hist_percentiles("vllm:prefill_time_request")
+        decode_stats = _hist_percentiles("vllm:decode_time_request")
 
-            # 计算速度
-            if req["prompt_latency_avg"] and req["prompt_tokens"]:
-                req["prompt_speed_tps"] = round(req["prompt_tokens"] / req["prompt_latency_avg"], 2)
-            if req["gen_latency_avg"] and req["generation_tokens"]:
-                req["gen_speed_tps"] = round(req["generation_tokens"] / req["gen_latency_avg"], 2)
+        # 获取请求成功总数
+        request_success_entry = raw.get("vllm:request_success_total", {})
+        request_success = _to_int(request_success_entry.get("value"))
 
-            requests.append(req)
-
-        return requests
+        return [{
+            "request_count": request_success,
+            "prompt_tokens": {
+                "p50": prompt_stats["p50"],
+                "p90": prompt_stats["p90"],
+                "p99": prompt_stats["p99"],
+            },
+            "generation_tokens": {
+                "p50": gen_stats["p50"],
+                "p90": gen_stats["p90"],
+                "p99": gen_stats["p99"],
+            },
+            "ttft_seconds": {
+                "p50": ttft_stats["p50"],
+                "p90": ttft_stats["p90"],
+                "p99": ttft_stats["p99"],
+            },
+            "e2e_latency_seconds": {
+                "p50": e2e_stats["p50"],
+                "p90": e2e_stats["p90"],
+                "p99": e2e_stats["p99"],
+            },
+            "prefill_time_seconds": {
+                "p50": prefill_stats["p50"],
+                "p90": prefill_stats["p90"],
+                "p99": prefill_stats["p99"],
+            },
+            "decode_time_seconds": {
+                "p50": decode_stats["p50"],
+                "p90": decode_stats["p90"],
+                "p99": decode_stats["p99"],
+            },
+        }]
 
     @staticmethod
     def _parse_prometheus(text: str) -> Dict[str, Dict[str, Any]]:

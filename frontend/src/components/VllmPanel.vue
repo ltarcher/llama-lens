@@ -92,26 +92,94 @@
 
       <!-- ============ 每个请求的统计 ============ -->
       <div class="section-title" v-if="requests.length">
-        每个请求的统计（{{ requests.length }} 个请求）
+        请求统计（Histogram 分位数）
       </div>
-      <div v-if="requests.length" class="request-table">
-        <div class="request-header">
-          <span class="col-id">请求 ID</span>
-          <span class="col-prompt">Prompt Tokens</span>
-          <span class="col-gen">生成 Tokens</span>
-          <span class="col-prompt-speed">Prompt 速度</span>
-          <span class="col-gen-speed">生成速度</span>
-          <span class="col-prompt-latency">Prompt 延迟</span>
-          <span class="col-gen-latency">生成延迟</span>
+      <div v-if="requests.length" class="request-stats">
+        <div class="stat-group">
+          <div class="stat-group-title">Prompt Tokens</div>
+          <div class="stat-row">
+            <span class="stat-label">P50</span>
+            <span class="stat-value mono">{{ fmtNum(reqStats.prompt_tokens.p50) }}</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">P90</span>
+            <span class="stat-value mono">{{ fmtNum(reqStats.prompt_tokens.p90) }}</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">P99</span>
+            <span class="stat-value mono">{{ fmtNum(reqStats.prompt_tokens.p99) }}</span>
+          </div>
         </div>
-        <div v-for="req in requests" :key="req.request_id" class="request-row glass">
-          <span class="col-id mono">{{ req.request_id }}</span>
-          <span class="col-prompt mono">{{ fmtNum(req.prompt_tokens) }}</span>
-          <span class="col-gen mono cyan">{{ fmtNum(req.generation_tokens) }}</span>
-          <span class="col-prompt-speed mono green">{{ req.prompt_speed_tps === null ? '—' : req.prompt_speed_tps.toFixed(1) }} t/s</span>
-          <span class="col-gen-speed mono cyan">{{ req.gen_speed_tps === null ? '—' : req.gen_speed_tps.toFixed(1) }} t/s</span>
-          <span class="col-prompt-latency mono">{{ req.prompt_latency_avg === null ? '—' : req.prompt_latency_avg.toFixed(2) }}s</span>
-          <span class="col-gen-latency mono">{{ req.gen_latency_avg === null ? '—' : req.gen_latency_avg.toFixed(3) }}s/token</span>
+        <div class="stat-group">
+          <div class="stat-group-title">生成 Tokens</div>
+          <div class="stat-row">
+            <span class="stat-label">P50</span>
+            <span class="stat-value mono cyan">{{ fmtNum(reqStats.generation_tokens.p50) }}</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">P90</span>
+            <span class="stat-value mono cyan">{{ fmtNum(reqStats.generation_tokens.p90) }}</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">P99</span>
+            <span class="stat-value mono cyan">{{ fmtNum(reqStats.generation_tokens.p99) }}</span>
+          </div>
+        </div>
+        <div class="stat-group">
+          <div class="stat-group-title">TTFT (首 token 延迟)</div>
+          <div class="stat-row">
+            <span class="stat-label">P50</span>
+            <span class="stat-value mono">{{ reqStats.ttft_seconds.p50 === null ? '—' : reqStats.ttft_seconds.p50.toFixed(3) }}s</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">P90</span>
+            <span class="stat-value mono">{{ reqStats.ttft_seconds.p90 === null ? '—' : reqStats.ttft_seconds.p90.toFixed(3) }}s</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">P99</span>
+            <span class="stat-value mono">{{ reqStats.ttft_seconds.p99 === null ? '—' : reqStats.ttft_seconds.p99.toFixed(3) }}s</span>
+          </div>
+        </div>
+        <div class="stat-group">
+          <div class="stat-group-title">端到端延迟</div>
+          <div class="stat-row">
+            <span class="stat-label">P50</span>
+            <span class="stat-value mono">{{ reqStats.e2e_latency_seconds.p50 === null ? '—' : reqStats.e2e_latency_seconds.p50.toFixed(3) }}s</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">P90</span>
+            <span class="stat-value mono">{{ reqStats.e2e_latency_seconds.p90 === null ? '—' : reqStats.e2e_latency_seconds.p90.toFixed(3) }}s</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">P99</span>
+            <span class="stat-value mono">{{ reqStats.e2e_latency_seconds.p99 === null ? '—' : reqStats.e2e_latency_seconds.p99.toFixed(3) }}s</span>
+          </div>
+        </div>
+        <div class="stat-group">
+          <div class="stat-group-title">Prefill / Decode 时间</div>
+          <div class="stat-row">
+            <span class="stat-label">Prefill P50</span>
+            <span class="stat-value mono green">{{ reqStats.prefill_time_seconds.p50 === null ? '—' : reqStats.prefill_time_seconds.p50.toFixed(3) }}s</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Prefill P99</span>
+            <span class="stat-value mono green">{{ reqStats.prefill_time_seconds.p99 === null ? '—' : reqStats.prefill_time_seconds.p99.toFixed(3) }}s</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Decode P50</span>
+            <span class="stat-value mono">{{ reqStats.decode_time_seconds.p50 === null ? '—' : reqStats.decode_time_seconds.p50.toFixed(3) }}s</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Decode P99</span>
+            <span class="stat-value mono">{{ reqStats.decode_time_seconds.p99 === null ? '—' : reqStats.decode_time_seconds.p99.toFixed(3) }}s</span>
+          </div>
+        </div>
+        <div class="stat-group">
+          <div class="stat-group-title">请求总数</div>
+          <div class="stat-row">
+            <span class="stat-label">成功请求</span>
+            <span class="stat-value mono">{{ fmtNum(reqStats.request_count) }}</span>
+          </div>
         </div>
       </div>
     </template>
@@ -262,6 +330,10 @@ const mtpClass = computed(() => {
 
 // ---------------- 每个请求的统计 ----------------
 const requests = computed(() => (props.vllm && props.vllm.requests) || [])
+const reqStats = computed(() => {
+  if (!requests.value.length) return {}
+  return requests.value[0]
+})
 </script>
 
 <style scoped>
@@ -296,29 +368,37 @@ const requests = computed(() => (props.vllm && props.vllm.requests) || [])
 .unit { font-size: 10px; color: var(--text-faint); }
 .cyan { color: var(--cyan); }
 .green { color: var(--green); }
-.request-table { margin-top: 6px; }
-.request-header {
+.request-stats {
   display: grid;
-  grid-template-columns: 80px 100px 100px 90px 90px 90px 100px;
-  gap: 4px;
-  font-size: 10px;
-  color: var(--text-faint);
-  letter-spacing: 1px;
-  padding: 4px 0;
-  border-bottom: 1px solid rgba(143, 163, 200, 0.15);
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 6px;
 }
-.request-row {
-  display: grid;
-  grid-template-columns: 80px 100px 100px 90px 90px 90px 100px;
-  gap: 4px;
+.stat-group {
+  background: rgba(143, 163, 200, 0.05);
+  border: 1px solid rgba(143, 163, 200, 0.1);
+  border-radius: 6px;
+  padding: 8px;
+}
+.stat-group-title {
   font-size: 11px;
-  padding: 4px 8px;
-  margin-top: 2px;
-  border-radius: 4px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  letter-spacing: 0.5px;
 }
-.request-row > span {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 0;
+  font-size: 11px;
+}
+.stat-label {
+  color: var(--text-faint);
+}
+.stat-value {
+  min-width: 60px;
+  text-align: right;
 }
 </style>

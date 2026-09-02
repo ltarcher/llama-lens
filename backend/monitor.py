@@ -277,6 +277,7 @@ class HostMonitor:
             "id": self.cfg.id,
             "name": self.cfg.name,
             "online": ll.get("online", False),
+            "llama_ok": ll.get("online", False),
             "vllm_online": bool(vllm and vllm.get("online")) if vllm else None,
             "ssh_ok": hm.get("reachable", False),
             "model_name": model.get("name", ""),

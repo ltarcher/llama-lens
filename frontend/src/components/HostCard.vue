@@ -42,6 +42,8 @@
         <span>MEM <b :class="valClass(host.mem_pct)">{{ host.mem_pct === null ? '—' : Math.round(host.mem_pct) + '%' }}</b></span>
         <span v-if="!host.ssh_ok" class="lv-warn">SSH 断开</span>
         <span v-if="!host.online" class="lv-danger">llama 离线</span>
+        <span v-if="host.llama_ok" class="llama-badge ok">llama-server 在线</span>
+        <span v-else-if="host.llama_ok === false" class="llama-badge warn">llama-server 离线</span>
         <span v-if="host.vllm_online" class="vllm-badge ok">vLLM 在线</span>
         <span v-else-if="host.vllm_online === false" class="vllm-badge warn">vLLM 离线</span>
       </div>
@@ -190,4 +192,23 @@ function valClass(v) {
 }
 .vllm-badge.ok { color: var(--green); border-color: rgba(0, 255, 157, 0.4); background: rgba(0, 255, 157, 0.08); }
 .vllm-badge.warn { color: var(--amber); border-color: rgba(255, 197, 61, 0.4); background: rgba(255, 197, 61, 0.08); }
+.llama-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  border: 1px solid;
+}
+.llama-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 5px currentColor;
+}
+.llama-badge.ok { color: var(--green); border-color: rgba(0, 229, 255, 0.4); background: rgba(0, 229, 255, 0.08); }
+.llama-badge.warn { color: var(--amber); border-color: rgba(255, 197, 61, 0.4); background: rgba(255, 197, 61, 0.08); }
 </style>
